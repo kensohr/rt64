@@ -187,6 +187,27 @@ namespace RT64 {
         uint32_t shadingSmoothMask;
         std::array<uint32_t, RSP_MAX_SEGMENTS> segments;
 
+        // gspSprite2D (GBI_S2D) state: the uSprite loaded by G_SPRITE2D_BASE and the scale and flips set by
+        // G_SPRITE2D_SCALEFLIP, both kept until the next such command or the next task. Unrelated to the
+        // S2DEX block below, whose name RT64 shortens to S2D as well.
+        struct Sprite2D {
+            uint32_t imageAddress; // Segmented.
+            uint32_t tlutAddress; // Segmented, 0 when the sprite has no TLUT.
+            int16_t stride; // Full image width in texels.
+            int16_t imageW; // Sub-image size in texels.
+            int16_t imageH;
+            int16_t imageX; // Sub-image origin inside the full image.
+            int16_t imageY;
+            uint8_t fmt;
+            uint8_t siz;
+            uint16_t scaleX; // 5.10 fixed point, texels per screen pixel.
+            uint16_t scaleY;
+            bool flipX;
+            bool flipY;
+        };
+
+        Sprite2D sprite2D;
+
         struct {
             // Storage for struct data loaded by S2D commands.
             std::array<uint8_t, 256> struct_buffer;
