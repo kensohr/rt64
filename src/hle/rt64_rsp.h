@@ -314,6 +314,10 @@ namespace RT64 {
         void setTextureImage(uint8_t fmt, uint8_t siz, uint16_t width, uint32_t segAddress);
         void drawIndexedTri(uint32_t a, uint32_t b, uint32_t c, bool rawGlobalIndices);
         void drawIndexedTri(uint32_t a, uint32_t b, uint32_t c);
+
+        // Draws the 3D line between two loaded vertices as a screen-space thin quad through RDP::drawTris
+        // (GBI_L3DEX's G_LINE3D, ADR 0003 item 3 of the wipeout64 fork).
+        void drawLine(uint8_t v0, uint8_t v1, int8_t wd);
         void setViewportAlign(uint16_t ori, int16_t offx, int16_t offy);
         void vertexTestZ(uint8_t vtxIndex);
         void endVertexTestZ();

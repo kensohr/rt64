@@ -10,6 +10,7 @@
 #include "common/rt64_common.h"
 #include "common/rt64_math.h"
 #include "gbi/rt64_f3d.h"
+#include "gbi/rt64_gbi_l3dex_line.h"
 #include "shared/rt64_rsp_fog.h"
 
 #include "rt64_interpreter.h"
@@ -1166,6 +1167,88 @@ namespace RT64 {
 
     void RSP::drawIndexedTri(uint32_t a, uint32_t b, uint32_t c) {
         drawIndexedTri(a, b, c, false);
+    }
+
+    static hlslpp::float4 lineVertexColor(const std::vector<uint8_t> &normColBytes, uint32_t globalIndex) {
+        const uint8_t *rgba = &normColBytes[globalIndex * 4];
+        return hlslpp::float4(rgba[0], rgba[1], rgba[2], rgba[3]) / 255.0f;
+    }
+
+    void RSP::drawLine(uint8_t v0, uint8_t v1, int8_t wd) {
+        // No range check: G_LINE3D's indices are 7 bits wide and the vertex buffer holds RSP_MAX_VERTICES (256).
+        static_assert(RSP_MAX_VERTICES > 0x7F, "G_LINE3D vertex indices must fit the vertex buffer.");
+
+        const int workloadCursor = state->ext.workloadQueue->writeCursor;
+        Workload &workload = state->ext.workloadQueue->workloads[workloadCursor];
+        const uint32_t globalIndices[2] = { indices[v0], indices[v1] };
+        used[v0] = used[v1] = true;
+
+        // Clip against the near plane in clip space first: a vertex behind the camera projects mirrored.
+        L3DEXLine::ClipPoint clipPoints[2];
+        for (int i = 0; i < 2; i++) {
+            const hlslpp::float4 &p = workload.drawData.posTransformed[globalIndices[i]];
+            clipPoints[i] = { p.x, p.y, p.z, p.w };
+        }
+
+        const L3DEXLine::NearClip nearClip = L3DEXLine::clipToNearPlane(clipPoints[0], clipPoints[1]);
+        if (!nearClip.visible) {
+            return;
+        }
+
+        // Unclipped endpoints keep the RSP's own projection; a clipped one is projected the same way.
+        const interop::RSPViewport &rspViewport = viewportStack[viewportStackSize - 1];
+        const L3DEXLine::Viewport viewport = {
+            { rspViewport.scale.x, rspViewport.scale.y, rspViewport.scale.z },
+            { rspViewport.translate.x, rspViewport.translate.y, rspViewport.translate.z }
+        };
+
+        const float endpointT[2] = { nearClip.t0, nearClip.t1 };
+        const float unclippedT[2] = { 0.0f, 1.0f };
+        L3DEXLine::ScreenPoint screenPoints[2];
+        for (int i = 0; i < 2; i++) {
+            if (endpointT[i] == unclippedT[i]) {
+                const hlslpp::float3 &p = workload.drawData.posScreen[globalIndices[i]];
+                screenPoints[i] = { p.x, p.y, p.z };
+            }
+            else {
+                screenPoints[i] = L3DEXLine::toScreen(L3DEXLine::lerp(clipPoints[0], clipPoints[1], endpointT[i]), viewport);
+            }
+        }
+
+        const L3DEXLine::ThinQuad quad = L3DEXLine::expandThinQuad(screenPoints[0], screenPoints[1], wd);
+        if (quad.triangleCount == 0) {
+            return;
+        }
+
+        // Colours from the raw vertex bytes (normals when lighting is on), with GLideN64's fallbacks: no G_SHADE
+        // means the primitive colour, no smooth shading means v0's colour on the whole line. G_LINE3D's flag
+        // (the flat-shading vertex) is ignored: WipeOut 64 always draws its lines smooth-shaded.
+        const uint32_t &geometryMode = geometryModeStack[geometryModeStackSize - 1];
+        const bool usesShade = (geometryMode & G_SHADE);
+        const bool usesSmoothShading = (geometryMode & shadingSmoothMask);
+        hlslpp::float4 endpointColors[2];
+        if (!usesShade) {
+            endpointColors[0] = endpointColors[1] = state->rdp->primColorStack[state->rdp->primColorStackSize - 1];
+        }
+        else {
+            const hlslpp::float4 c0 = lineVertexColor(workload.drawData.normColBytes, globalIndices[0]);
+            const hlslpp::float4 c1 = usesSmoothShading ? lineVertexColor(workload.drawData.normColBytes, globalIndices[1]) : c0;
+            for (int i = 0; i < 2; i++) {
+                endpointColors[i] = c0 + (c1 - c0) * endpointT[i];
+            }
+        }
+
+        float colors[L3DEXLine::ThinQuadVertexCount][4];
+        float texcoords[L3DEXLine::ThinQuadVertexCount][2] = {};
+        for (uint32_t i = 0; i < L3DEXLine::ThinQuadVertexCount; i++) {
+            const hlslpp::float4 &color = endpointColors[L3DEXLine::ThinQuadVertexEndpoint[i]];
+            colors[i][0] = color.x;
+            colors[i][1] = color.y;
+            colors[i][2] = color.z;
+            colors[i][3] = color.w;
+        }
+
+        state->rdp->drawTris(quad.triangleCount, &quad.positions[0][0], &texcoords[0][0], &colors[0][0], textureState.tile, textureState.levels);
     }
 
     void RSP::setViewportAlign(uint16_t ori, int16_t offx, int16_t offy) {

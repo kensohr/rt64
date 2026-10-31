@@ -15,6 +15,7 @@
 #include "rt64_gbi_f3dex2.h"
 #include "rt64_gbi_f3dwave.h"
 #include "rt64_gbi_f3dzex2.h"
+#include "rt64_gbi_l3dex.h"
 #include "rt64_gbi_l3dex2.h"
 #include "rt64_gbi_rdp.h"
 #include "rt64_gbi_s2d.h"
@@ -147,7 +148,7 @@ namespace RT64 {
     const GBIInstance   S2DEX2_XBUS_2_08          = { "S2DEX2.xbus 2.08",                          GBIUCode::S2DEX2,      { false,  false,  false,  false,  false } }; // Needs confirmation.
     const GBIInstance   L3D_BC                    = { "2.0D, 04-01-96 (L3D Blast Corps)",          GBIUCode::Unknown,     { false,  false,  false,  false,  false } }; // Needs confirmation.
     const GBIInstance   L3DEX_1_00                = { "L3DEX 1.00",                                GBIUCode::Unknown,     { false,  false,  false,  false,  false } }; // Needs confirmation.
-    const GBIInstance   L3DEX_1_21                = { "L3DEX 1.21",                                GBIUCode::Unknown,     { false,  false,  false,  false,  false } }; // Needs confirmation.
+    const GBIInstance   L3DEX_1_21                = { "L3DEX 1.21",                                GBIUCode::L3DEX,       { false,  false,  false,  false,  false } }; // Confirmed with WipeOut 64 (USA).
     const GBIInstance   L3DEX_1_23                = { "L3DEX 1.23",                                GBIUCode::Unknown,     { false,  false,  false,  false,  false } }; // Needs confirmation.
     const GBIInstance   L3DEX_1_23_A              = { "L3DEX 1.23 (Variant)",                      GBIUCode::Unknown,     { false,  false,  false,  false,  false } }; // Needs confirmation.
     const GBIInstance   L3DEX2_FIFO_2_05          = { "L3DEX2.fifo 2.05",                          GBIUCode::L3DEX2,      { false,  false,  false,  false,  false } }; // Needs confirmation.
@@ -499,6 +500,9 @@ namespace RT64 {
                 break;
             case GBIUCode::S2DEX2:
                 GBI_S2DEX2::setup(&gbi);
+                break;
+            case GBIUCode::L3DEX:
+                GBI_L3DEX::setup(&gbi);
                 break;
             case GBIUCode::L3DEX2:
                 GBI_L3DEX2::setup(&gbi);

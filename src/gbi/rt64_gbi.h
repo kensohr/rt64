@@ -28,6 +28,7 @@ namespace RT64 {
         S2D,
         S2DEX,
         S2DEX2,
+        L3DEX,
         L3DEX2,
         Count
     };
