@@ -1028,7 +1028,8 @@ namespace RT64 {
                     lastPresentId = workload.presentId;
                 }
                 // If the same set of counters is used, we wait until the presentation of its targets is finished so the targets are available to use. Waiting is ignored
-                // if the frame counter has never presented anything yet, as it'll only be a valid value if the previous present event actually did something.
+                // if the frame counter has never presented anything yet, as it'll only be a valid value if the previous present event actually did something. The other
+                // set of counters is not covered by this wait: its targets are waited on individually when they're about to be overridden below.
                 else if (generateInterpolatedFrames) {
                     std::unique_lock<std::mutex> interpolatedLock(ext.sharedResources->interpolatedMutex);
                     ext.sharedResources->interpolatedCondition.wait(interpolatedLock, [&]() {
@@ -1037,6 +1038,7 @@ namespace RT64 {
                 }
 
                 InterpolatedFrameCounters &curFrameCounters = ext.sharedResources->interpolatedFrames[ext.sharedResources->interpolatedFramesIndex];
+                InterpolatedFrameCounters &otherFrameCounters = ext.sharedResources->interpolatedFrames[ext.sharedResources->interpolatedFramesIndex ^ 1];
                 curFrameCounters.skipped = false;
                 curFrameCounters.presented = 0;
                 curFrameCounters.available = 0;
@@ -1089,12 +1091,13 @@ namespace RT64 {
                             overrideTarget = interpolatedTargets[targetIndex].get();
                             overrideModifier = (targetIndex + 1);
 
-                            if (useDifferentCounters && (prevFrameCounters.available > 0) && (targetIndex < prevFrameCounters.available)) {
+                            if ((otherFrameCounters.available > 0) && (targetIndex < otherFrameCounters.available)) {
                                 // Wait until the target has finished presenting if the alternate frame counter (used by the present queue) is making use of this target.
+                                // This also applies when no new present event has arrived before this workload, as the present queue can still be on the alternate frame counter.
                                 std::unique_lock<std::mutex> interpolatedLock(ext.sharedResources->interpolatedMutex);
                                 ext.sharedResources->interpolatedCondition.wait(interpolatedLock, [&]() {
-                                    frameReduction = frameReduction || (prevFrameCounters.presented <= targetIndex);
-                                    return prevFrameCounters.presented > targetIndex;
+                                    frameReduction = frameReduction || (otherFrameCounters.presented <= targetIndex);
+                                    return otherFrameCounters.presented > targetIndex;
                                 });
                             }
 
