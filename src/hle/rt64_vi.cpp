@@ -20,7 +20,26 @@ namespace RT64 {
     }
 
     hlslpp::float4 VI::cropRectangle() const {
-        return { 0.0f, 0.0f, 1.0f, 1.0f };
+        const hlslpp::float4 fullRectangle = { 0.0f, 0.0f, 1.0f, 1.0f };
+
+        // The line arithmetic below holds for one field per framebuffer, so interlaced modes keep showing everything.
+        if (status.serrate) {
+            return fullRectangle;
+        }
+
+        const uint8_t siz = fbSiz();
+        const float fbHeight = float(fbSize().y);
+        if ((siz < G_IM_SIZ_16b) || (fbHeight <= 0.0f)) {
+            return fullRectangle;
+        }
+
+        // The VI starts scanning at the origin, which lies past the start of the framebuffer that fbAddress() estimates.
+        const uint32_t rowBytes = width * (1U << (siz - 1));
+        const float firstLine = float((origin - fbAddress()) / rowBytes);
+
+        // The vertical region is measured in half-lines of the TV signal.
+        const float scannedLines = float(vRegion.vEnd - vRegion.vStart) / (2.0f * yScaleFloat());
+        return { 0.0f, firstLine / fbHeight, 1.0f, scannedLines / fbHeight };
     }
 
     float VI::gamma() const {
