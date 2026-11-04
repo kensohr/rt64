@@ -20,6 +20,7 @@ namespace interop {
         float3 keyScale;
         int convertK[6];
         float rasterMaxDepth; // Per-draw depth above which RasterPS discards. Filled in with the call's projection.
+        float rasterMinDepth; // Per-draw depth below which RasterPS discards, for draws it clamps to depth 0 instead of cutting at it.
     };
 #ifdef HLSL_CPU
 };

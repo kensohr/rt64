@@ -75,10 +75,12 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
     // FIXME: This can be implemented by checking feature support for the API and embedding the depth bounds into the pipeline.
     const bool pipelineDepthBounds = false;
     
-    // Handle no-nearclipping by clamping the minimum depth and manually clipping above the maximum.
+    // Handle no-nearclipping by clamping the minimum depth and manually clipping above the maximum. A viewport that puts the
+    // ucode's near clip below depth 0 also comes here, since the ucode clamps what's between that clip and depth 0 to depth 0:
+    // see viewportRasterNearCut. Draws without a near clip have a minimum no pixel reaches.
     if (depthClampNear) {
-        // Since depth clip is disabled on the PSO so near clip can be ignored, we manually clip any values above the allowed depth.
-        if (vertexPosition.z > MaxDepth) {
+        // Since depth clip is disabled on the PSO so near clip can be ignored, we manually clip any values outside the allowed depth.
+        if ((vertexPosition.z < instanceRDPParams[instanceIndex].rasterMinDepth) || (vertexPosition.z > MaxDepth)) {
             return false;
         }
     }

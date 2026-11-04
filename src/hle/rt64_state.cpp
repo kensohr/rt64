@@ -1020,16 +1020,24 @@ namespace RT64 {
                     if (proj.usesViewport()) {
                         flags.culling = (callDesc.geometryMode & callDesc.cullBothMask) != 0;
                         flags.smoothShade = (callDesc.geometryMode & callDesc.shadingSmoothMask) != 0;
-                        flags.NoN = callDesc.NoN;
 
                         const interop::RSPViewport &viewport = workload.drawData.rspViewports[proj.transformsIndex];
                         callDesc.rdpParams.rasterMaxDepth = viewportRasterDepthCut(viewport.scale.z, viewport.translate.z);
+
+                        // A ucode with a near clip whose viewport puts that clip below depth 0 goes through the same clamp
+                        // as a NoN one, but with a near cut at that clip. The render flag is what RasterPS and the pipeline's
+                        // depth clip read; callDesc.NoN keeps reporting the ucode.
+                        const std::optional<float> nearCut = viewportRasterNearCut(viewport.scale.z, viewport.translate.z);
+                        const bool keepsNearBand = !callDesc.NoN && nearCut.has_value() && (callDesc.otherMode.zSource() != G_ZS_PRIM);
+                        flags.NoN = callDesc.NoN || keepsNearBand;
+                        callDesc.rdpParams.rasterMinDepth = keepsNearBand ? nearCut.value() : NoRasterNearCut;
                     }
                     else {
                         flags.culling = false;
                         flags.smoothShade = true;
                         flags.NoN = true;
                         callDesc.rdpParams.rasterMaxDepth = RawTriangleRasterDepthCut;
+                        callDesc.rdpParams.rasterMinDepth = NoRasterNearCut;
                     }
 
                     // Specialize shaders based on their tile parameters.
