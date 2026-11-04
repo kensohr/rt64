@@ -29,6 +29,9 @@ namespace RT64 {
 
         const uint8_t siz = fbSiz();
         const float fbHeight = float(fbSize().y);
+
+        // A Y scale or a width of 0 reaches here as an fbSize() of 0, and a blank status as a siz below 16b. The arithmetic
+        // below can't take either: it would divide by zero or shift by -1.
         if ((siz < G_IM_SIZ_16b) || (fbHeight <= 0.0f)) {
             return fullRectangle;
         }

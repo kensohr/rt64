@@ -1022,7 +1022,7 @@ namespace RT64 {
                         flags.smoothShade = (callDesc.geometryMode & callDesc.shadingSmoothMask) != 0;
 
                         const interop::RSPViewport &viewport = workload.drawData.rspViewports[proj.transformsIndex];
-                        callDesc.rdpParams.rasterMaxDepth = viewportRasterDepthCut(viewport.scale.z, viewport.translate.z);
+                        callDesc.rdpParams.rasterMaxDepth = viewportRasterFarCut(viewport.scale.z, viewport.translate.z);
 
                         // A ucode with a near clip whose viewport puts that clip below depth 0 goes through the same clamp
                         // as a NoN one, but with a near cut at that clip. The render flag is what RasterPS and the pipeline's
@@ -1036,7 +1036,7 @@ namespace RT64 {
                         flags.culling = false;
                         flags.smoothShade = true;
                         flags.NoN = true;
-                        callDesc.rdpParams.rasterMaxDepth = RawTriangleRasterDepthCut;
+                        callDesc.rdpParams.rasterMaxDepth = RawTriangleRasterFarCut;
                         callDesc.rdpParams.rasterMinDepth = NoRasterNearCut;
                     }
 

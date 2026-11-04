@@ -6,6 +6,8 @@
 
 #include <cmath>
 
+#include "hle/rt64_raster_depth_cut.h"
+
 namespace RT64 {
     namespace L3DEXLine {
         Line3D decodeLine3D(uint32_t w1) {
@@ -87,9 +89,8 @@ namespace RT64 {
 
         float clampToRasterDepth(float screenDepth) {
             // The margin keeps the interpolated depth under the cut despite rounding in the rasterizer.
-            const float RasterDepthCut = 1022.0f / 1024.0f;
             const float RoundingMargin = 1.0f / 65536.0f;
-            const float MaxScreenDepth = RasterDepthCut - RoundingMargin;
+            const float MaxScreenDepth = RawTriangleRasterFarCut - RoundingMargin;
             return (screenDepth > MaxScreenDepth) ? MaxScreenDepth : screenDepth;
         }
 

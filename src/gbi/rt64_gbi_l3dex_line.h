@@ -60,7 +60,7 @@ namespace RT64 {
         ScreenPoint toScreen(const ClipPoint &p, const Viewport &viewport);
 
         // Keeps a line's screen depth below the depth where RasterPS discards raw triangles (1022/1024,
-        // RawTriangleRasterDepthCut), which is what a line is drawn as. That cut sits at z = w only for a viewport with
+        // RawTriangleRasterFarCut), which is what a line is drawn as. That cut sits at z = w only for a viewport with
         // depth scale and offset 511. WipeOut 64 uses scale 1023 and offset 0, so z = w lands on 1023/1024 and the cut
         // would remove lines the L3DEX RSP still draws: from about 7,400 units instead of 9,600 in 4P, 10,900 instead
         // of 16,400 in 1P. Draws with a viewport cut at their own z = w, so a line flattened here can draw over geometry

@@ -66,7 +66,7 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
 
     // The F3D family of microcodes clips polygons at z = w, earlier than the end of the depth range. Not accounting for this
     // can lead to geometry showing up that should otherwise be invisible. Where z = w lands depends on the viewport, so the
-    // value comes per draw: see viewportRasterDepthCut. A test ROM against an LLE implementation measured 1022/1024, which is
+    // value comes per draw: see viewportRasterFarCut. A test ROM against an LLE implementation measured 1022/1024, which is
     // z = w for a viewport with depth scale and offset 511; draws with no viewport keep that value.
     // FIXME: This should be turned off for non-F3D microcodes.
     const bool simulateDepthClipF3D = true;
