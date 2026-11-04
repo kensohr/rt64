@@ -1183,15 +1183,15 @@ namespace RT64 {
         const uint32_t globalIndices[2] = { indices[v0], indices[v1] };
         used[v0] = used[v1] = true;
 
-        // Clip against the near plane in clip space first: a vertex behind the camera projects mirrored.
+        // Clip in clip space first: a vertex behind the camera projects mirrored, and L3DEX cuts lines at z = w.
         L3DEXLine::ClipPoint clipPoints[2];
         for (int i = 0; i < 2; i++) {
             const hlslpp::float4 &p = workload.drawData.posTransformed[globalIndices[i]];
             clipPoints[i] = { p.x, p.y, p.z, p.w };
         }
 
-        const L3DEXLine::NearClip nearClip = L3DEXLine::clipToNearPlane(clipPoints[0], clipPoints[1]);
-        if (!nearClip.visible) {
+        const L3DEXLine::LineClip depthClip = L3DEXLine::clipToDepthPlanes(clipPoints[0], clipPoints[1]);
+        if (!depthClip.visible) {
             return;
         }
 
@@ -1202,7 +1202,7 @@ namespace RT64 {
             { rspViewport.translate.x, rspViewport.translate.y, rspViewport.translate.z }
         };
 
-        const float endpointT[2] = { nearClip.t0, nearClip.t1 };
+        const float endpointT[2] = { depthClip.t0, depthClip.t1 };
         const float unclippedT[2] = { 0.0f, 1.0f };
         L3DEXLine::ScreenPoint screenPoints[2];
         for (int i = 0; i < 2; i++) {
@@ -1213,6 +1213,8 @@ namespace RT64 {
             else {
                 screenPoints[i] = L3DEXLine::toScreen(L3DEXLine::lerp(clipPoints[0], clipPoints[1], endpointT[i]), viewport);
             }
+
+            screenPoints[i].z = L3DEXLine::clampToRasterDepth(screenPoints[i].z);
         }
 
         const L3DEXLine::ThinQuad quad = L3DEXLine::expandThinQuad(screenPoints[0], screenPoints[1], wd);
@@ -1234,7 +1236,8 @@ namespace RT64 {
             const hlslpp::float4 c0 = lineVertexColor(workload.drawData.normColBytes, globalIndices[0]);
             const hlslpp::float4 c1 = usesSmoothShading ? lineVertexColor(workload.drawData.normColBytes, globalIndices[1]) : c0;
             for (int i = 0; i < 2; i++) {
-                endpointColors[i] = c0 + (c1 - c0) * endpointT[i];
+                const L3DEXLine::LineColor color = L3DEXLine::lerpColor({ c0.x, c0.y, c0.z, c0.w }, { c1.x, c1.y, c1.z, c1.w }, endpointT[i]);
+                endpointColors[i] = hlslpp::float4(color.r, color.g, color.b, color.a);
             }
         }
 

@@ -6,8 +6,8 @@
 
 #include <cstdint>
 
-// Line math of the L3DEX module (GBI_L3DEX): decoding G_LINE3D, near-plane clipping and the screen-space
-// thin quad a line is drawn as. Pure and dependency-free (no RT64 headers) so it can be unit-tested on its
+// Line math of the L3DEX module (GBI_L3DEX): decoding G_LINE3D, near- and far-plane clipping, the colour and
+// depth of the clipped ends, and the screen-space thin quad a line is drawn as. Pure and dependency-free (no RT64 headers) so it can be unit-tested on its
 // own; GBI_L3DEX and RSP::drawLine do the RDRAM and renderer side.
 
 namespace RT64 {
@@ -26,8 +26,8 @@ namespace RT64 {
             float x, y, z, w;
         };
 
-        // The part of a line in front of the near plane, as parameters along v0 -> v1.
-        struct NearClip {
+        // The part of a line left after clipping, as parameters along v0 -> v1.
+        struct LineClip {
             bool visible;
             float t0;
             float t1;
@@ -35,7 +35,13 @@ namespace RT64 {
 
         // Clips a line against the near plane z = -w (guPerspective's convention). A vertex behind the
         // camera projects mirrored, so a line crossing the camera plane must be cut before it is drawn.
-        NearClip clipToNearPlane(const ClipPoint &p0, const ClipPoint &p1);
+        LineClip clipToNearPlane(const ClipPoint &p0, const ClipPoint &p1);
+
+        // Clips a line against the far plane z = w, as L3DEX 1.21 does: a point with z >= w is beyond it.
+        LineClip clipToFarPlane(const ClipPoint &p0, const ClipPoint &p1);
+
+        // The part of a line between the near and far planes.
+        LineClip clipToDepthPlanes(const ClipPoint &p0, const ClipPoint &p1);
 
         // The point at parameter t along p0 -> p1.
         ClipPoint lerp(const ClipPoint &p0, const ClipPoint &p1, float t);
@@ -52,6 +58,19 @@ namespace RT64 {
 
         // Projects a clip-space point the way RT64's RSP computes posScreen (y flipped, as the RSP does).
         ScreenPoint toScreen(const ClipPoint &p, const Viewport &viewport);
+
+        // Keeps a line's screen depth below the depth where RasterPS discards every non-rect pixel (1022/1024,
+        // simulateDepthClipF3D). That cut sits at z = w only for a viewport with depth scale and offset 511.
+        // WipeOut 64 uses scale 1023 and offset 0, so z = w lands on 1023/1024 and the cut would remove lines
+        // the L3DEX RSP still draws: from about 7,400 units instead of 9,600 in 4P, 10,900 instead of 16,400 in 1P.
+        float clampToRasterDepth(float screenDepth);
+
+        struct LineColor {
+            float r, g, b, a;
+        };
+
+        // The colour at parameter t along a line, for an endpoint moved by a clip.
+        LineColor lerpColor(const LineColor &c0, const LineColor &c1, float t);
 
         constexpr uint32_t ThinQuadVertexCount = 6;
 

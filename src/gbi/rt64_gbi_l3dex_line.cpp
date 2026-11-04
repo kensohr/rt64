@@ -16,27 +16,56 @@ namespace RT64 {
             return line;
         }
 
-        NearClip clipToNearPlane(const ClipPoint &p0, const ClipPoint &p1) {
-            // Signed distance to the near plane, positive in front of it.
-            const float d0 = p0.z + p0.w;
-            const float d1 = p1.z + p1.w;
-            const bool p0InFront = (d0 >= 0.0f);
-            const bool p1InFront = (d1 >= 0.0f);
-            if (!p0InFront && !p1InFront) {
+        // d0 and d1 are the endpoints' signed distances to the plane, positive on its visible side.
+        static LineClip clipAgainstPlane(float d0, float d1, bool p0Visible, bool p1Visible) {
+            if (!p0Visible && !p1Visible) {
                 return { false, 0.0f, 0.0f };
             }
 
-            if (p0InFront && p1InFront) {
+            if (p0Visible && p1Visible) {
                 return { true, 0.0f, 1.0f };
             }
 
             const float tPlane = d0 / (d0 - d1);
-            if (p0InFront) {
+            if (p0Visible) {
                 return { true, 0.0f, tPlane };
             }
             else {
                 return { true, tPlane, 1.0f };
             }
+        }
+
+        LineClip clipToNearPlane(const ClipPoint &p0, const ClipPoint &p1) {
+            const float d0 = p0.z + p0.w;
+            const float d1 = p1.z + p1.w;
+            const bool p0InFront = (d0 >= 0.0f);
+            const bool p1InFront = (d1 >= 0.0f);
+            return clipAgainstPlane(d0, d1, p0InFront, p1InFront);
+        }
+
+        LineClip clipToFarPlane(const ClipPoint &p0, const ClipPoint &p1) {
+            const float d0 = p0.w - p0.z;
+            const float d1 = p1.w - p1.z;
+            // Strict, unlike the near plane above: the ucode's far flag includes z = w.
+            const bool p0BeforeFar = (d0 > 0.0f);
+            const bool p1BeforeFar = (d1 > 0.0f);
+            return clipAgainstPlane(d0, d1, p0BeforeFar, p1BeforeFar);
+        }
+
+        LineClip clipToDepthPlanes(const ClipPoint &p0, const ClipPoint &p1) {
+            const LineClip nearClip = clipToNearPlane(p0, p1);
+            const LineClip farClip = clipToFarPlane(p0, p1);
+            if (!nearClip.visible || !farClip.visible) {
+                return { false, 0.0f, 0.0f };
+            }
+
+            const float t0 = (nearClip.t0 > farClip.t0) ? nearClip.t0 : farClip.t0;
+            const float t1 = (nearClip.t1 < farClip.t1) ? nearClip.t1 : farClip.t1;
+            if (t0 >= t1) {
+                return { false, 0.0f, 0.0f };
+            }
+
+            return { true, t0, t1 };
         }
 
         ClipPoint lerp(const ClipPoint &p0, const ClipPoint &p1, float t) {
@@ -53,6 +82,23 @@ namespace RT64 {
                 (p.x / p.w) * viewport.scale[0] + viewport.translate[0],
                 (p.y / -p.w) * viewport.scale[1] + viewport.translate[1],
                 (p.z / p.w) * viewport.scale[2] + viewport.translate[2]
+            };
+        }
+
+        float clampToRasterDepth(float screenDepth) {
+            // The margin keeps the interpolated depth under the cut despite rounding in the rasterizer.
+            const float RasterDepthCut = 1022.0f / 1024.0f;
+            const float RoundingMargin = 1.0f / 65536.0f;
+            const float MaxScreenDepth = RasterDepthCut - RoundingMargin;
+            return (screenDepth > MaxScreenDepth) ? MaxScreenDepth : screenDepth;
+        }
+
+        LineColor lerpColor(const LineColor &c0, const LineColor &c1, float t) {
+            return {
+                c0.r + (c1.r - c0.r) * t,
+                c0.g + (c1.g - c0.g) * t,
+                c0.b + (c1.b - c0.b) * t,
+                c0.a + (c1.a - c0.a) * t
             };
         }
 
