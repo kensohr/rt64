@@ -64,12 +64,13 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
     int2 pixelPosSeed = floor(vertexPosition.xy);
     uint randomSeed = initRand(FrParams.frameCount, instanceIndex * pixelPosSeed.y * pixelPosSeed.x, 16); // TODO: Review seed.
 
-    // The F3D family of microcodes has a bug where polygons are clipped earlier than expected despite the depth being computed
-    // in a wider range of values. Not accounting for this can lead to geometry showing up that should otherwise be invisible.
-    // This max range was determined by using a test ROM against an LLE implementation.
+    // The F3D family of microcodes clips polygons at z = w, earlier than the end of the depth range. Not accounting for this
+    // can lead to geometry showing up that should otherwise be invisible. Where z = w lands depends on the viewport, so the
+    // value comes per draw: see viewportRasterDepthCut. A test ROM against an LLE implementation measured 1022/1024, which is
+    // z = w for a viewport with depth scale and offset 511; draws with no viewport keep that value.
     // FIXME: This should be turned off for non-F3D microcodes.
     const bool simulateDepthClipF3D = true;
-    const float MaxDepth = simulateDepthClipF3D && !renderFlagRect(rp.flags) && !zSourcePrim ? (1022.0f / 1024.0f) : 1.0f;
+    const float MaxDepth = simulateDepthClipF3D && !renderFlagRect(rp.flags) && !zSourcePrim ? instanceRDPParams[instanceIndex].rasterMaxDepth : 1.0f;
     
     // FIXME: This can be implemented by checking feature support for the API and embedding the depth bounds into the pipeline.
     const bool pipelineDepthBounds = false;

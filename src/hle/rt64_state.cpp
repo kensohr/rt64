@@ -20,6 +20,7 @@
 
 #include "rt64_application.h"
 #include "rt64_interpreter.h"
+#include "rt64_raster_depth_cut.h"
 
 //#define ASSERT_ON_BLENDER_EMULATION
 #define SYNC_ON_EVERY_FB_PAIR 0
@@ -1020,11 +1021,15 @@ namespace RT64 {
                         flags.culling = (callDesc.geometryMode & callDesc.cullBothMask) != 0;
                         flags.smoothShade = (callDesc.geometryMode & callDesc.shadingSmoothMask) != 0;
                         flags.NoN = callDesc.NoN;
+
+                        const interop::RSPViewport &viewport = workload.drawData.rspViewports[proj.transformsIndex];
+                        callDesc.rdpParams.rasterMaxDepth = viewportRasterDepthCut(viewport.scale.z, viewport.translate.z);
                     }
                     else {
                         flags.culling = false;
                         flags.smoothShade = true;
                         flags.NoN = true;
+                        callDesc.rdpParams.rasterMaxDepth = RawTriangleRasterDepthCut;
                     }
 
                     // Specialize shaders based on their tile parameters.
