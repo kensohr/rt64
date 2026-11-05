@@ -54,20 +54,41 @@ namespace RT64 {
             return clipAgainstPlane(d0, d1, p0BeforeFar, p1BeforeFar);
         }
 
-        LineClip clipToDepthPlanes(const ClipPoint &p0, const ClipPoint &p1) {
-            const LineClip nearClip = clipToNearPlane(p0, p1);
-            const LineClip farClip = clipToFarPlane(p0, p1);
-            if (!nearClip.visible || !farClip.visible) {
+        // The part of a line both clips keep.
+        static LineClip intersectClips(const LineClip &a, const LineClip &b) {
+            if (!a.visible || !b.visible) {
                 return { false, 0.0f, 0.0f };
             }
 
-            const float t0 = (nearClip.t0 > farClip.t0) ? nearClip.t0 : farClip.t0;
-            const float t1 = (nearClip.t1 < farClip.t1) ? nearClip.t1 : farClip.t1;
+            const float t0 = (a.t0 > b.t0) ? a.t0 : b.t0;
+            const float t1 = (a.t1 < b.t1) ? a.t1 : b.t1;
             if (t0 >= t1) {
                 return { false, 0.0f, 0.0f };
             }
 
             return { true, t0, t1 };
+        }
+
+        LineClip clipToDepthPlanes(const ClipPoint &p0, const ClipPoint &p1) {
+            return intersectClips(clipToNearPlane(p0, p1), clipToFarPlane(p0, p1));
+        }
+
+        // d0 and d1 are the distances inside one x or y plane. Strict, as for the far plane: the ucode's x and y
+        // flags include |x| = w and |y| = w.
+        static LineClip clipToSidePlane(float d0, float d1) {
+            return clipAgainstPlane(d0, d1, d0 > 0.0f, d1 > 0.0f);
+        }
+
+        LineClip clipToAllPlanes(const ClipPoint &p0, const ClipPoint &p1) {
+            // The x and y planes use a fixed clip ratio of 1. L3DEX's ratio lives in its DMEM, which rspboot reloads
+            // from the ucode data for each task, and no captured L3DEX list writes G_MW_CLIP. RT64's clipRatios is
+            // not used: F3DLX lists can change it, and it persists across tasks.
+            LineClip clip = clipToDepthPlanes(p0, p1);
+            clip = intersectClips(clip, clipToSidePlane(p0.w - p0.x, p1.w - p1.x)); // x < w
+            clip = intersectClips(clip, clipToSidePlane(p0.w + p0.x, p1.w + p1.x)); // x > -w
+            clip = intersectClips(clip, clipToSidePlane(p0.w - p0.y, p1.w - p1.y)); // y < w
+            clip = intersectClips(clip, clipToSidePlane(p0.w + p0.y, p1.w + p1.y)); // y > -w
+            return clip;
         }
 
         ClipPoint lerp(const ClipPoint &p0, const ClipPoint &p1, float t) {

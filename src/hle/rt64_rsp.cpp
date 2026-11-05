@@ -1183,15 +1183,16 @@ namespace RT64 {
         const uint32_t globalIndices[2] = { indices[v0], indices[v1] };
         used[v0] = used[v1] = true;
 
-        // Clip in clip space first: a vertex behind the camera projects mirrored, and L3DEX cuts lines at z = w.
+        // Clip in clip space first: a vertex behind the camera projects mirrored, and L3DEX cuts lines at z = w and
+        // at the current viewport's edges.
         L3DEXLine::ClipPoint clipPoints[2];
         for (int i = 0; i < 2; i++) {
             const hlslpp::float4 &p = workload.drawData.posTransformed[globalIndices[i]];
             clipPoints[i] = { p.x, p.y, p.z, p.w };
         }
 
-        const L3DEXLine::LineClip depthClip = L3DEXLine::clipToDepthPlanes(clipPoints[0], clipPoints[1]);
-        if (!depthClip.visible) {
+        const L3DEXLine::LineClip lineClip = L3DEXLine::clipToAllPlanes(clipPoints[0], clipPoints[1]);
+        if (!lineClip.visible) {
             return;
         }
 
@@ -1202,7 +1203,7 @@ namespace RT64 {
             { rspViewport.translate.x, rspViewport.translate.y, rspViewport.translate.z }
         };
 
-        const float endpointT[2] = { depthClip.t0, depthClip.t1 };
+        const float endpointT[2] = { lineClip.t0, lineClip.t1 };
         const float unclippedT[2] = { 0.0f, 1.0f };
         L3DEXLine::ScreenPoint screenPoints[2];
         for (int i = 0; i < 2; i++) {

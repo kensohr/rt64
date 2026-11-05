@@ -6,9 +6,10 @@
 
 #include <cstdint>
 
-// Line math of the L3DEX module (GBI_L3DEX): decoding G_LINE3D, near- and far-plane clipping, the colour and
-// depth of the clipped ends, and the screen-space thin quad a line is drawn as. Pure and dependency-free (no RT64 headers) so it can be unit-tested on its
-// own; GBI_L3DEX and RSP::drawLine do the RDRAM and renderer side.
+// Line math of the L3DEX module (GBI_L3DEX): decoding G_LINE3D, clipping against the near, far, x and y planes,
+// the colour and depth of the clipped ends, and the screen-space thin quad a line is drawn as. Pure and
+// dependency-free (no RT64 headers) so it can be unit-tested on its own; GBI_L3DEX and RSP::drawLine do the RDRAM
+// and renderer side.
 
 namespace RT64 {
     namespace L3DEXLine {
@@ -42,6 +43,10 @@ namespace RT64 {
 
         // The part of a line between the near and far planes.
         LineClip clipToDepthPlanes(const ClipPoint &p0, const ClipPoint &p1);
+
+        // The part of a line inside all six planes, as L3DEX 1.21 clips it: the near and far planes, and |x| < w and
+        // |y| < w, which put the cut on the current viewport's edges. A point on an x or y plane is outside it.
+        LineClip clipToAllPlanes(const ClipPoint &p0, const ClipPoint &p1);
 
         // The point at parameter t along p0 -> p1.
         ClipPoint lerp(const ClipPoint &p0, const ClipPoint &p1, float t);
