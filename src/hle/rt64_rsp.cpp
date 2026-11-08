@@ -11,6 +11,7 @@
 #include "common/rt64_math.h"
 #include "gbi/rt64_f3d.h"
 #include "gbi/rt64_gbi_l3dex_line.h"
+#include "hle/rt64_triangle_screen_bounds.h"
 #include "shared/rt64_rsp_fog.h"
 
 #include "rt64_interpreter.h"
@@ -1129,9 +1130,20 @@ namespace RT64 {
             maxMatrix = std::max(maxMatrix, worldIndices[globalIndex]);
         }
 
+        // A vertex at or behind the camera projects mirrored, so these screen positions neither bound the triangle nor
+        // give its winding; the GPU clips and culls it in clip space. Such a triangle may then reach any part of the
+        // viewport, and a draw rect that stops short of it cuts the rows below from the framebuffer pair.
+        const auto &posTransformed = workload.drawData.posTransformed;
+        TriangleScreenVertex screenVertices[3];
+        for (int i = 0; i < 3; i++) {
+            const hlslpp::float3 &v = posScreen[globalIndices[i]];
+            screenVertices[i] = { v.x, v.y, posTransformed[globalIndices[i]][3] };
+        }
+
+        const std::optional<TriangleScreenBounds> screenBounds = triangleScreenBounds(screenVertices);
         bool visibleTri = true;
         const bool usesCulling = geometryMode & cullBothMask;
-        if (usesCulling) {
+        if (usesCulling && screenBounds.has_value()) {
             const hlslpp::float3 U = posScreen[globalIndices[1]] - posScreen[globalIndices[0]];
             const hlslpp::float3 V = posScreen[globalIndices[2]] - posScreen[globalIndices[0]];
             const hlslpp::float3 N = hlslpp::cross(V, U);
@@ -1142,18 +1154,15 @@ namespace RT64 {
         if (visibleTri && !scissorRect.isNull()) {
             fbPair.scissorRect.merge(scissorRect);
 
-            FixedRect drawRect;
-            for (int i = 0; i < 3; i++) {
-                const hlslpp::float3 &v = posScreen[globalIndices[i]];
-                drawRect.ulx = std::min(drawRect.ulx, int32_t(v[0] * 4.0f));
-                drawRect.uly = std::min(drawRect.uly, int32_t(v[1] * 4.0f));
-                drawRect.lrx = std::max(drawRect.lrx, int32_t(hlslpp::ceil(v.x).x * 4.0f));
-                drawRect.lry = std::max(drawRect.lry, int32_t(hlslpp::ceil(v.y).x * 4.0f));
-            }
-
             const interop::RSPViewport &viewport = viewportStack[viewportStackSize - 1];
             const FixedRect viewportClipRect = viewport.rect(clipRatios.data());
-            drawRect = viewportClipRect.intersection(scissorRect.intersection(drawRect));
+            // With unknown bounds the triangle may cover the whole viewport.
+            FixedRect triangleRect = viewportClipRect;
+            if (screenBounds.has_value()) {
+                triangleRect = FixedRect(screenBounds->ulx, screenBounds->uly, screenBounds->lrx, screenBounds->lry);
+            }
+
+            const FixedRect drawRect = viewportClipRect.intersection(scissorRect.intersection(triangleRect));
             if (!drawRect.isNull()) {
                 fbPair.drawColorRect.merge(drawRect);
                 if (otherModeStack[otherModeStackSize - 1].zUpd()) {
