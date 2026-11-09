@@ -17,6 +17,7 @@
 #include "common/rt64_tmem_hasher.h"
 #include "preset/rt64_preset_draw_call.h"
 #include "preset/rt64_preset_light.h"
+#include "rhi/rt64_present_capture.h"
 
 #include "rt64_application.h"
 #include "rt64_interpreter.h"
@@ -1967,6 +1968,12 @@ namespace RT64 {
             // Push a new renderer event to the timeline for presenting this VI.
             present.screenVI = newVI;
             advancePresent(present, false);
+
+            PresentQueuedHook *queuedHook = GetPresentQueuedHook();
+            if (queuedHook != nullptr) {
+                queuedHook(present.presentId, newVI.fbAddress());
+            }
+
             ext.presentQueue->advanceToNextPresent();
 
             // This presentation originates from screen changes being made manually by the CPU

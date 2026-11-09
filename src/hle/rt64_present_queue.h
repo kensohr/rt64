@@ -58,6 +58,19 @@ namespace RT64 {
         Timestamp presentTimestamp;
         VIHistory viHistory;
 
+        // An offscreen copy of the VI renderer's image, read back for the present capture hook (rt64_present_capture.h).
+        struct Capture {
+            std::unique_ptr<RenderTexture> texture;
+            std::unique_ptr<RenderFramebuffer> framebuffer;
+            std::unique_ptr<RenderBuffer> readback;
+            uint32_t width = 0;
+            uint32_t height = 0;
+            uint32_t rowPitch = 0;
+            bool recorded = false;
+        };
+
+        Capture capture;
+
         PresentQueue();
         ~PresentQueue();
         void reset();
@@ -68,6 +81,8 @@ namespace RT64 {
         void waitForPresentId(uint64_t waitId);
         void setup(const External &ext);
         void threadPresent(const Present &present, bool &swapChainValid);
+        void recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams);
+        void deliverCapture(const Present &present);
         void skipInterpolation();
         void notifyPresentId(const Present &present);
         void threadAdvanceBarrier();

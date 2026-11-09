@@ -5,6 +5,7 @@
 #include "rt64_present_queue.h"
 
 #include "common/rt64_thread.h"
+#include "rhi/rt64_present_capture.h"
 #include "rhi/rt64_render_hooks.h"
 
 #include "rt64_workload_queue.h"
@@ -341,6 +342,12 @@ namespace RT64 {
                     }
                 }
                 
+                // Only the real frame is captured, never an interpolated one.
+                const bool captureFrame = (i == 0) && (GetPresentCaptureHook() != nullptr);
+                if (captureFrame) {
+                    recordCapture(commandList, renderParams);
+                }
+
                 commandList->setFramebuffer(swapChainFramebuffer);
                 commandList->clearColor();
 
@@ -367,6 +374,10 @@ namespace RT64 {
                     RenderCommandSemaphore *signalSemaphore = drawSemaphores[swapChainIndex].get();
                     ext.presentGraphicsWorker->commandQueue->executeCommandLists(&commandList, 1, &waitSemaphore, 1, &signalSemaphore, 1, ext.presentGraphicsWorker->commandFence.get());
                     ext.presentGraphicsWorker->wait();
+                }
+
+                if (captureFrame) {
+                    deliverCapture(present);
                 }
             }
 
@@ -405,6 +416,68 @@ namespace RT64 {
                 presentProfiler.logAndRestart();
             }
         }
+    }
+
+    void PresentQueue::recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams) {
+        // The swap chain's format (rt64_application.cpp), which the VI renderer's pipelines are built for.
+        const RenderFormat format = RenderFormat::B8G8R8A8_UNORM;
+        // D3D12 needs each row of a texture copied into a buffer to start on a 256-byte boundary.
+        const uint32_t rowPitchAlignment = 256;
+        const uint32_t width = ext.swapChain->getWidth();
+        const uint32_t height = ext.swapChain->getHeight();
+        const uint32_t pixelBytes = RenderFormatSize(format);
+        capture.recorded = false;
+        if ((width == 0) || (height == 0)) {
+            return;
+        }
+
+        if ((capture.texture == nullptr) || (capture.width != width) || (capture.height != height)) {
+            capture.framebuffer.reset();
+            capture.texture = ext.device->createTexture(RenderTextureDesc::ColorTarget(width, height, format));
+            const RenderTexture *captureTexture = capture.texture.get();
+            capture.framebuffer = ext.device->createFramebuffer(RenderFramebufferDesc(&captureTexture, 1));
+            capture.rowPitch = (width * pixelBytes + rowPitchAlignment - 1) & ~(rowPitchAlignment - 1);
+            capture.readback = ext.device->createBuffer(RenderBufferDesc::ReadbackBuffer(uint64_t(capture.rowPitch) * height));
+            capture.width = width;
+            capture.height = height;
+        }
+
+        // The same draw as the swap chain's, into a target of its size, so the image is the VI renderer's output
+        // without the render hook's UI.
+        RenderTexture *captureTexture = capture.texture.get();
+        commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(captureTexture, RenderTextureLayout::COLOR_WRITE));
+        commandList->setFramebuffer(capture.framebuffer.get());
+        commandList->clearColor();
+        if (renderParams.texture != nullptr) {
+            commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(renderParams.texture, RenderTextureLayout::SHADER_READ));
+            viRenderer->render(renderParams);
+        }
+
+        commandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(captureTexture, RenderTextureLayout::COPY_SOURCE));
+        RenderTextureCopyLocation destination = RenderTextureCopyLocation::PlacedFootprint(capture.readback.get(), format, width, height, 1, capture.rowPitch / pixelBytes);
+        // D3D12CommandList::copyTextureRegion reads the destination's texture pointer for sample positions even on the
+        // footprint path, and asserts on it in Debug builds.
+        destination.texture = captureTexture;
+        commandList->copyTextureRegion(destination, RenderTextureCopyLocation::Subresource(captureTexture));
+        capture.recorded = true;
+    }
+
+    void PresentQueue::deliverCapture(const Present &present) {
+        PresentCaptureHook *captureHook = GetPresentCaptureHook();
+        if (!capture.recorded || (captureHook == nullptr)) {
+            return;
+        }
+
+        capture.recorded = false;
+        PresentCaptureImage image;
+        image.presentId = present.presentId;
+        image.fbAddress = present.screenVI.fbAddress();
+        image.width = capture.width;
+        image.height = capture.height;
+        image.rowPitch = capture.rowPitch;
+        image.bgra = reinterpret_cast<const uint8_t *>(capture.readback->map());
+        captureHook(image);
+        capture.readback->unmap();
     }
 
     void PresentQueue::skipInterpolation() {
