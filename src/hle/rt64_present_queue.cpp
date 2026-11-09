@@ -270,7 +270,8 @@ namespace RT64 {
         
         for (int32_t i = 0; i < framesToPresent; i++) {
             uint32_t frameCountersNextPresented = 0;
-            if ((framesToPresent > 1) && (usingMSAA || (i > 0))) {
+            const bool usesInterpolatedTarget = (framesToPresent > 1) && (usingMSAA || (i > 0));
+            if (usesInterpolatedTarget) {
                 // Stall until the interpolated color target is available.
                 const uint32_t targetIndex = usingMSAA ? i : (i - 1);
                 std::unique_lock<std::mutex> interpolatedLock(ext.sharedResources->interpolatedMutex);
@@ -342,8 +343,8 @@ namespace RT64 {
                     }
                 }
                 
-                // Only the real frame is captured, never an interpolated one.
-                const bool captureFrame = (i == 0) && (GetPresentCaptureHook() != nullptr);
+                // Only the game's own frame is captured, never an interpolated one.
+                const bool captureFrame = !usesInterpolatedTarget && (GetPresentCaptureHook() != nullptr);
                 if (captureFrame) {
                     recordCapture(commandList, renderParams);
                 }
@@ -375,16 +376,16 @@ namespace RT64 {
                     ext.presentGraphicsWorker->commandQueue->executeCommandLists(&commandList, 1, &waitSemaphore, 1, &signalSemaphore, 1, ext.presentGraphicsWorker->commandFence.get());
                     ext.presentGraphicsWorker->wait();
                 }
-
-                if (captureFrame) {
-                    deliverCapture(present);
-                }
             }
 
             if (lockedWorkloadMutex) {
                 ext.sharedResources->workloadMutex.unlock();
                 lockedWorkloadMutex = false;
             }
+
+            // After the unlock, so the hook's copy never holds up the workload thread. Does nothing unless this
+            // frame recorded a capture.
+            deliverCapture(present);
             
             if (frameCountersNextPresented > 0) {
                 {
