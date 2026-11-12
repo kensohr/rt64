@@ -7,6 +7,7 @@
 #include "common/rt64_thread.h"
 #include "rhi/rt64_present_capture.h"
 #include "rhi/rt64_render_hooks.h"
+#include "rhi/rt64_renderer_probe.h"
 
 #include "rt64_workload_queue.h"
 
@@ -346,7 +347,12 @@ namespace RT64 {
                 // Only the game's own frame is captured, never an interpolated one.
                 const bool captureFrame = !usesInterpolatedTarget && (GetPresentCaptureHook() != nullptr);
                 if (captureFrame) {
-                    recordCapture(commandList, renderParams);
+                    recordCapture(commandList, renderParams, capture, ext.swapChain->getWidth(), ext.swapChain->getHeight());
+                }
+
+                const RingCaptureListener *ringListener = usesInterpolatedTarget ? nullptr : GetRingCaptureListener();
+                if (ringListener != nullptr) {
+                    recordCapture(commandList, renderParams, ringCapture, ringListener->width, ringListener->height);
                 }
 
                 commandList->setFramebuffer(swapChainFramebuffer);
@@ -385,7 +391,9 @@ namespace RT64 {
 
             // After the unlock, so the hook's copy never holds up the workload thread. Does nothing unless this
             // frame recorded a capture.
-            deliverCapture(present);
+            deliverCapture(present, capture, GetPresentCaptureHook());
+            const RingCaptureListener *ringListener = GetRingCaptureListener();
+            deliverCapture(present, ringCapture, (ringListener != nullptr) ? ringListener->captured : nullptr);
             
             if (frameCountersNextPresented > 0) {
                 {
@@ -419,66 +427,68 @@ namespace RT64 {
         }
     }
 
-    void PresentQueue::recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams) {
+    void PresentQueue::recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams, Capture &target, uint32_t width, uint32_t height) {
         // The swap chain's format (rt64_application.cpp), which the VI renderer's pipelines are built for.
         const RenderFormat format = RenderFormat::B8G8R8A8_UNORM;
         // D3D12 needs each row of a texture copied into a buffer to start on a 256-byte boundary.
         const uint32_t rowPitchAlignment = 256;
-        const uint32_t width = ext.swapChain->getWidth();
-        const uint32_t height = ext.swapChain->getHeight();
         const uint32_t pixelBytes = RenderFormatSize(format);
-        capture.recorded = false;
+        target.recorded = false;
         if ((width == 0) || (height == 0)) {
             return;
         }
 
-        if ((capture.texture == nullptr) || (capture.width != width) || (capture.height != height)) {
-            capture.framebuffer.reset();
-            capture.texture = ext.device->createTexture(RenderTextureDesc::ColorTarget(width, height, format));
-            const RenderTexture *captureTexture = capture.texture.get();
-            capture.framebuffer = ext.device->createFramebuffer(RenderFramebufferDesc(&captureTexture, 1));
-            capture.rowPitch = (width * pixelBytes + rowPitchAlignment - 1) & ~(rowPitchAlignment - 1);
-            capture.readback = ext.device->createBuffer(RenderBufferDesc::ReadbackBuffer(uint64_t(capture.rowPitch) * height));
-            capture.width = width;
-            capture.height = height;
+        if ((target.texture == nullptr) || (target.width != width) || (target.height != height)) {
+            target.framebuffer.reset();
+            target.texture = ext.device->createTexture(RenderTextureDesc::ColorTarget(width, height, format));
+            const RenderTexture *captureTexture = target.texture.get();
+            target.framebuffer = ext.device->createFramebuffer(RenderFramebufferDesc(&captureTexture, 1));
+            target.rowPitch = (width * pixelBytes + rowPitchAlignment - 1) & ~(rowPitchAlignment - 1);
+            target.readback = ext.device->createBuffer(RenderBufferDesc::ReadbackBuffer(uint64_t(target.rowPitch) * height));
+            target.width = width;
+            target.height = height;
         }
 
-        // The same draw as the swap chain's, into a target of its size, so the image is the VI renderer's output
+        // The same draw as the swap chain's, laid out for the target's size, so the image is the VI renderer's output
         // without the render hook's UI.
-        RenderTexture *captureTexture = capture.texture.get();
+        RenderTexture *captureTexture = target.texture.get();
         commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(captureTexture, RenderTextureLayout::COLOR_WRITE));
-        commandList->setFramebuffer(capture.framebuffer.get());
+        commandList->setFramebuffer(target.framebuffer.get());
         commandList->clearColor();
         if (renderParams.texture != nullptr) {
             commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(renderParams.texture, RenderTextureLayout::SHADER_READ));
-            viRenderer->render(renderParams);
+            VIRenderer::RenderParams targetParams = renderParams;
+            targetParams.targetWidth = width;
+            targetParams.targetHeight = height;
+            viRenderer->render(targetParams);
         }
 
         commandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(captureTexture, RenderTextureLayout::COPY_SOURCE));
-        RenderTextureCopyLocation destination = RenderTextureCopyLocation::PlacedFootprint(capture.readback.get(), format, width, height, 1, capture.rowPitch / pixelBytes);
+        RenderTextureCopyLocation destination = RenderTextureCopyLocation::PlacedFootprint(target.readback.get(), format, width, height, 1, target.rowPitch / pixelBytes);
         // D3D12CommandList::copyTextureRegion reads the destination's texture pointer for sample positions even on the
         // footprint path, and asserts on it in Debug builds.
         destination.texture = captureTexture;
         commandList->copyTextureRegion(destination, RenderTextureCopyLocation::Subresource(captureTexture));
-        capture.recorded = true;
+        target.recorded = true;
     }
 
-    void PresentQueue::deliverCapture(const Present &present) {
-        PresentCaptureHook *captureHook = GetPresentCaptureHook();
-        if (!capture.recorded || (captureHook == nullptr)) {
+    void PresentQueue::deliverCapture(const Present &present, Capture &target, PresentCaptureHook *captureHook) {
+        // Cleared even without a hook, so a capture is never handed over with a later present's id.
+        const bool recorded = target.recorded;
+        target.recorded = false;
+        if (!recorded || (captureHook == nullptr)) {
             return;
         }
 
-        capture.recorded = false;
         PresentCaptureImage image;
         image.presentId = present.presentId;
         image.fbAddress = present.screenVI.fbAddress();
-        image.width = capture.width;
-        image.height = capture.height;
-        image.rowPitch = capture.rowPitch;
-        image.bgra = reinterpret_cast<const uint8_t *>(capture.readback->map());
+        image.width = target.width;
+        image.height = target.height;
+        image.rowPitch = target.rowPitch;
+        image.bgra = reinterpret_cast<const uint8_t *>(target.readback->map());
         captureHook(image);
-        capture.readback->unmap();
+        target.readback->unmap();
     }
 
     void PresentQueue::skipInterpolation() {

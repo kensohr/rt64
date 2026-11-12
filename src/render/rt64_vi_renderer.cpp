@@ -69,7 +69,10 @@ namespace RT64 {
 
         RenderViewport viewport;
         RenderRect scissor;
-        getViewportAndScissor(p.swapChain, *p.vi, p.resolutionScale, p.downsamplingScale, p.removeBlackBorders, viewport, scissor);
+        const bool hasTargetSize = (p.targetWidth > 0) && (p.targetHeight > 0);
+        const uint32_t windowWidth = hasTargetSize ? p.targetWidth : p.swapChain->getWidth();
+        const uint32_t windowHeight = hasTargetSize ? p.targetHeight : p.swapChain->getHeight();
+        getViewportAndScissor(windowWidth, windowHeight, *p.vi, p.resolutionScale, p.downsamplingScale, p.removeBlackBorders, viewport, scissor);
         p.commandList->setViewports(viewport);
         p.commandList->setScissors(scissor);
 
@@ -87,6 +90,10 @@ namespace RT64 {
     }
 
     void VIRenderer::getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor) {
+        getViewportAndScissor(swapChain->getWidth(), swapChain->getHeight(), vi, resolutionScale, downsamplingScale, removeBlackBorders, viewport, scissor);
+    }
+
+    void VIRenderer::getViewportAndScissor(uint32_t windowWidth, uint32_t windowHeight, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor) {
         // We define three different coordinate spaces to work with to translate the VI parameters into the Window.
         //
         // VideoSD: This corresponds to the SD TV Scanline space, which is what the VI natively works on.
@@ -102,7 +109,7 @@ namespace RT64 {
         // specified by the VI.
         const hlslpp::float2 sdSize = removeBlackBorders ? hlslpp::float2(vi.fbSize()) : hlslpp::float2(320.0f, 240.0f);
         const hlslpp::float2 hdSize = computeHDSize(sdSize, resolutionScale, downsamplingScale);
-        const hlslpp::float2 windowSize = { float(swapChain->getWidth()), float(swapChain->getHeight()) };
+        const hlslpp::float2 windowSize = { float(windowWidth), float(windowHeight) };
 
         // Query the VI for the current rendering area.
         hlslpp::float4 viViewRect = vi.viewRectangle() * sdSize.xyxy;

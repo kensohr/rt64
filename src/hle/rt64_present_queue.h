@@ -7,6 +7,7 @@
 #include "common/rt64_profiling_timer.h"
 #include "gui/rt64_inspector.h"
 #include "render/rt64_vi_renderer.h"
+#include "rhi/rt64_present_capture.h"
 
 #include "rt64_application_window.h"
 #include "rt64_present.h"
@@ -58,7 +59,8 @@ namespace RT64 {
         Timestamp presentTimestamp;
         VIHistory viHistory;
 
-        // An offscreen copy of the VI renderer's image, read back for the present capture hook (rt64_present_capture.h).
+        // An offscreen copy of the VI renderer's image, read back for the present capture hook (rt64_present_capture.h)
+        // or the ring capture listener (rt64_renderer_probe.h).
         struct Capture {
             std::unique_ptr<RenderTexture> texture;
             std::unique_ptr<RenderFramebuffer> framebuffer;
@@ -70,6 +72,7 @@ namespace RT64 {
         };
 
         Capture capture;
+        Capture ringCapture;
 
         PresentQueue();
         ~PresentQueue();
@@ -81,8 +84,8 @@ namespace RT64 {
         void waitForPresentId(uint64_t waitId);
         void setup(const External &ext);
         void threadPresent(const Present &present, bool &swapChainValid);
-        void recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams);
-        void deliverCapture(const Present &present);
+        void recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams, Capture &target, uint32_t width, uint32_t height);
+        void deliverCapture(const Present &present, Capture &target, PresentCaptureHook *captureHook);
         void skipInterpolation();
         void notifyPresentId(const Present &present);
         void threadAdvanceBarrier();

@@ -29,11 +29,15 @@ namespace RT64 {
             UserConfiguration::Filtering filtering = UserConfiguration::Filtering::Linear;
             const VI *vi = nullptr;
             bool removeBlackBorders = false;
+            // The size of the target drawn into, when it isn't the swap chain's (0 x 0: the swap chain's).
+            uint32_t targetWidth = 0;
+            uint32_t targetHeight = 0;
         };
 
         VIRenderer();
         ~VIRenderer();
         void render(const RenderParams &p);
         static void getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor);
+        static void getViewportAndScissor(uint32_t windowWidth, uint32_t windowHeight, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor);
     };
 };

@@ -30,4 +30,14 @@ namespace RT64 {
     const RendererProbeHooks *GetRendererProbeHooks() {
         return probeHooks.load();
     }
+
+    static std::atomic<const RingCaptureListener *> ringCaptureListener = nullptr;
+
+    void SetRingCaptureListener(const RingCaptureListener *listener) {
+        ringCaptureListener = listener;
+    }
+
+    const RingCaptureListener *GetRingCaptureListener() {
+        return ringCaptureListener.load();
+    }
 };

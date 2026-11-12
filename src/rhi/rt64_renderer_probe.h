@@ -8,6 +8,8 @@
 #include <optional>
 #include <string>
 
+#include "rt64_present_capture.h"
+
 namespace RT64 {
     // The device Application::setup ended with, after any graphics API fallback, as the host's diagnostic recorder
     // reports it. Includes only the standard library, so the host reads it without RT64's other headers.
@@ -49,4 +51,20 @@ namespace RT64 {
     // the store returns.
     void SetRendererProbeHooks(const RendererProbeHooks *hooks);
     const RendererProbeHooks *GetRendererProbeHooks();
+
+    // The host's frame ring: a second capture of each drawn present (not interpolated frames, not skipped presents),
+    // independent of the present capture hooks the shot recorder owns; both can capture the same present. While set,
+    // the present queue draws the VI renderer's output once more into a width x height target (the GPU scales it),
+    // reads it back, and calls `captured` on the present thread after the present's command list ran and before the
+    // workload thread is let go, so the callback must be short (a copy). The image's size is the one recorded.
+    struct RingCaptureListener {
+        uint32_t width = 0;
+        uint32_t height = 0;
+        PresentCaptureHook *captured = nullptr;
+    };
+
+    // Any thread, at any time, with the same lifetime rule as the probe hooks. Null (the default): no extra draw and
+    // no readback, one atomic load per drawn present.
+    void SetRingCaptureListener(const RingCaptureListener *listener);
+    const RingCaptureListener *GetRingCaptureListener();
 };
