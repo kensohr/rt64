@@ -11,6 +11,7 @@
 #include "common/rt64_math.h"
 #include "gbi/rt64_f3d.h"
 #include "gbi/rt64_gbi_l3dex_line.h"
+#include "hle/rt64_probe_geometry.h"
 #include "hle/rt64_triangle_screen_bounds.h"
 #include "shared/rt64_rsp_fog.h"
 
@@ -1169,6 +1170,23 @@ namespace RT64 {
                     fbPair.drawDepthRect.merge(drawRect);
                 }
             }
+        }
+
+        // Raw global indices come from the vertex Z test, not from a triangle the game draws.
+        if (state->probeGeometry.isMeasuring && !rawGlobalIndices && (projType == Projection::Type::Perspective)) {
+            ProbeClipVertex clipVertices[3];
+            for (int i = 0; i < 3; i++) {
+                const hlslpp::float4 &p = posTransformed[globalIndices[i]];
+                clipVertices[i] = { p[0], p[1], p[2], p[3] };
+            }
+
+            const interop::RSPViewport &viewport = viewportStack[viewportStackSize - 1];
+            const ProbeViewport probeViewport = { viewport.scale.x, viewport.scale.y, viewport.translate.x, viewport.translate.y };
+            // A null scissor draws nothing, so it gives no reach.
+            const ProbeScissor emptyScissor = { 0, 0, 0, 0 };
+            const ProbeScissor probeScissor = scissorRect.isNull() ? emptyScissor : ProbeScissor{ scissorRect.ulx, scissorRect.uly, scissorRect.lrx, scissorRect.lry };
+            const ProbeTriangleGeometry probeTriangle = measureProbeTriangle(clipVertices, probeViewport, probeScissor, usesCulling);
+            state->probeGeometry.add(uint32_t(workload.currentFramebufferPairIndex()), probeTriangle);
         }
 
         drawCall.triangleCount++;

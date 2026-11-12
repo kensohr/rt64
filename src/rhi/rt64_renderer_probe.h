@@ -29,6 +29,13 @@ namespace RT64 {
     // One workload (one full sync), reported when its processing ends.
     struct ProbeWorkload {
         uint32_t gameCallCount = 0;
+
+        // Over the workload's perspective triangles, measured in clip space (hle/rt64_probe_geometry.h). All zero for
+        // a workload that began before the probe was connected.
+        uint32_t behindCameraTris = 0;   // counted triangles with a vertex at or behind the camera
+        uint32_t nearClipTris = 0;       // counted triangles with a vertex beyond the near plane
+        float maxAbsW = 0.0f;            // largest finite |w| of any vertex
+        bool nonFiniteW = false;         // some vertex had a NaN or infinite w
     };
 
     // Mirrors FramebufferPair::FlushReason without including RT64's hle headers.
@@ -57,6 +64,13 @@ namespace RT64 {
         ProbeRect drawColorRect;
         int32_t colorHeight = 0;     // drawColorRect.bottom(true): the pixel rows RT64 sizes the framebuffer with
         ProbeFlushReason flushReason = ProbeFlushReason::None;
+
+        // How far down the pair's counted perspective triangles reach within the viewport and scissor, measured in clip
+        // space apart from drawColorRect (hle/rt64_probe_geometry.h). Unset when none reached into the scissor, or the
+        // workload began before the probe was connected.
+        bool hasReach = false;
+        int32_t reachQuarterPixels = 0;
+        bool reachBehindCamera = false;  // a triangle with a vertex at or behind the camera reached that far
     };
 
     // The renderer probe's hooks, switched on and off as one set: the host points the probe at a whole table, so RT64

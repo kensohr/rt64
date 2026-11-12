@@ -27,6 +27,7 @@
 #include "rt64_light_manager.h"
 #include "rt64_microcode.h"
 #include "rt64_present_queue.h"
+#include "rt64_probe_geometry.h"
 #include "rt64_rdp.h"
 #include "rt64_rsp.h"
 #include "rt64_rdp_tmem.h"
@@ -120,6 +121,7 @@ namespace RT64 {
         uint64_t presentId = 0;
         uint32_t ditherRandomSeed = 0;
         uint32_t renderFlagSampleCount = 0;
+        ProbeGeometryAccumulator probeGeometry;
         External ext;
 
         struct Extended {
