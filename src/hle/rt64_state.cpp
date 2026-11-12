@@ -18,6 +18,7 @@
 #include "preset/rt64_preset_draw_call.h"
 #include "preset/rt64_preset_light.h"
 #include "rhi/rt64_present_capture.h"
+#include "rhi/rt64_renderer_probe.h"
 
 #include "rt64_application.h"
 #include "rt64_interpreter.h"
@@ -1790,6 +1791,13 @@ namespace RT64 {
             }
         }
         
+        const RendererProbeHooks *probeHooks = GetRendererProbeHooks();
+        if ((probeHooks != nullptr) && (probeHooks->workloadProcessed != nullptr)) {
+            ProbeWorkload probeWorkload;
+            probeWorkload.gameCallCount = workload.gameCallCount;
+            probeHooks->workloadProcessed(probeWorkload);
+        }
+
         // Advance the workload queue at the end of a full synchronization.
         advanceWorkload(workload, false);
         ext.workloadQueue->advanceToNextWorkload();
@@ -1972,6 +1980,11 @@ namespace RT64 {
             PresentQueuedHook *queuedHook = GetPresentQueuedHook();
             if (queuedHook != nullptr) {
                 queuedHook(present.presentId, newVI.fbAddress());
+            }
+
+            const RendererProbeHooks *probeHooks = GetRendererProbeHooks();
+            if ((probeHooks != nullptr) && (probeHooks->presentQueued != nullptr)) {
+                probeHooks->presentQueued(present.presentId, newVI.fbAddress());
             }
 
             ext.presentQueue->advanceToNextPresent();

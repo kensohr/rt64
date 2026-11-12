@@ -4,6 +4,7 @@
 
 #include "rt64_renderer_probe.h"
 
+#include <atomic>
 #include <mutex>
 
 namespace RT64 {
@@ -18,5 +19,15 @@ namespace RT64 {
     void SetRendererDeviceInfo(RendererDeviceInfo info) {
         std::lock_guard<std::mutex> lock(deviceInfoMutex);
         deviceInfo = std::move(info);
+    }
+
+    static std::atomic<const RendererProbeHooks *> probeHooks = nullptr;
+
+    void SetRendererProbeHooks(const RendererProbeHooks *hooks) {
+        probeHooks = hooks;
+    }
+
+    const RendererProbeHooks *GetRendererProbeHooks() {
+        return probeHooks.load();
     }
 };

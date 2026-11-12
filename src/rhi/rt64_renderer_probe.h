@@ -23,4 +23,30 @@ namespace RT64 {
 
     // Called by Application::setup once the device is final.
     void SetRendererDeviceInfo(RendererDeviceInfo info);
+
+    // One workload (one full sync), reported when its processing ends.
+    struct ProbeWorkload {
+        uint32_t gameCallCount = 0;
+    };
+
+    // The renderer probe's hooks, switched on and off as one set: the host points the probe at a whole table, so RT64
+    // never sees half a set, and a later hook is a new member rather than a new setter. A null member is not called.
+    // Every member is called on the thread that processes display lists and updates the screen.
+    struct RendererProbeHooks {
+        // State::fullSync, just before the workload advances. Draw calls are counted per workload, not per task:
+        // a dummy workload has a full sync without a task, and a task without a full sync continues the workload.
+        void (*workloadProcessed)(const ProbeWorkload &workload) = nullptr;
+
+        // Application::processDisplayLists, after the interpreter processed the task (not while the inspector pauses).
+        void (*taskProcessed)() = nullptr;
+
+        // State::updateScreen, for each present queued, beside the present queued hook (rt64_present_capture.h).
+        void (*presentQueued)(uint64_t presentId, uint32_t fbAddress) = nullptr;
+    };
+
+    // Any thread, at any time. Null (the default) disconnects: then each call site costs one atomic load. The table
+    // must stay valid for the rest of the process, and a call that loaded the previous table may still run after
+    // the store returns.
+    void SetRendererProbeHooks(const RendererProbeHooks *hooks);
+    const RendererProbeHooks *GetRendererProbeHooks();
 };

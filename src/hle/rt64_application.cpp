@@ -542,6 +542,11 @@ namespace RT64 {
             else {
                 interpreter->processRDPLists(dlStartAddress, dlStart, dlEnd);
             }
+
+            const RendererProbeHooks *probeHooks = GetRendererProbeHooks();
+            if ((probeHooks != nullptr) && (probeHooks->taskProcessed != nullptr)) {
+                probeHooks->taskProcessed();
+            }
         }
 
         if (isHLE) {
