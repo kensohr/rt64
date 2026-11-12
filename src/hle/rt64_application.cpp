@@ -4,6 +4,7 @@
 
 #include "rt64_application.h"
 #include "rhi/rt64_render_hooks.h"
+#include "rhi/rt64_renderer_probe.h"
 
 #include <cinttypes>
 #include <filesystem>
@@ -38,6 +39,19 @@ namespace RT64 {
 #else
         return plume::CreateVulkanInterface();
 #endif
+    }
+
+    static std::string graphicsApiName(UserConfiguration::GraphicsAPI api) {
+        switch (api) {
+        case UserConfiguration::GraphicsAPI::D3D12:
+            return "D3D12";
+        case UserConfiguration::GraphicsAPI::Vulkan:
+            return "Vulkan";
+        case UserConfiguration::GraphicsAPI::Metal:
+            return "Metal";
+        default:
+            return "unknown";
+        }
     }
 
     // Application::Core
@@ -488,6 +502,10 @@ namespace RT64 {
 
         // Set up the RDP
         state->rdp->setGBI();
+
+        // After the Vulkan fallback above, so the host sees the device and graphics API that really render.
+        SetRendererDeviceInfo({ deviceDescription.name, static_cast<uint32_t>(deviceDescription.vendor),
+            deviceDescription.driverVersion, graphicsApiName(chosenGraphicsAPI) });
 
         return SetupResult::Success;
     }

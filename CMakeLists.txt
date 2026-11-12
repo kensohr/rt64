@@ -403,6 +403,7 @@ set (SOURCES
     "${PROJECT_SOURCE_DIR}/src/shared/rt64_hlsl_json.cpp"
 
     "${PROJECT_SOURCE_DIR}/src/rhi/rt64_present_capture.cpp"
+    "${PROJECT_SOURCE_DIR}/src/rhi/rt64_renderer_probe.cpp"
     "${PROJECT_SOURCE_DIR}/src/rhi/rt64_render_hooks.cpp"
 
     "${PROJECT_SOURCE_DIR}/src/contrib/imgui/imgui.cpp"
