@@ -813,9 +813,12 @@ namespace RT64 {
         return ProbeFlushReason::None;
     }
 
-    static ProbePair probePairFrom(const FramebufferPair &fbPair) {
+    static ProbePair probePairFrom(const FramebufferPair &fbPair, const ProbePairReach &reach) {
         ProbePair probePair;
         probePair.colorAddress = fbPair.colorImage.address;
+        probePair.hasReach = reach.hasReach;
+        probePair.reachQuarterPixels = reach.reachQuarterPixels;
+        probePair.reachBehindCamera = reach.behindCamera;
         probePair.flushReason = probeFlushReasonFrom(fbPair.flushReason);
         const FixedRect &rect = fbPair.drawColorRect;
         // FixedRect::bottom asserts on a null rect.
@@ -1828,15 +1831,22 @@ namespace RT64 {
         const RendererProbeHooks *probeHooks = GetRendererProbeHooks();
         if ((probeHooks != nullptr) && (probeHooks->pairProcessed != nullptr)) {
             for (uint32_t f = 0; f < workload.fbPairCount; f++) {
-                probeHooks->pairProcessed(probePairFrom(workload.fbPairs[f]));
+                probeHooks->pairProcessed(probePairFrom(workload.fbPairs[f], probeGeometry.pairReach(f)));
             }
         }
 
         if ((probeHooks != nullptr) && (probeHooks->workloadProcessed != nullptr)) {
             ProbeWorkload probeWorkload;
             probeWorkload.gameCallCount = workload.gameCallCount;
+            probeWorkload.behindCameraTris = probeGeometry.behindCameraTris;
+            probeWorkload.nearClipTris = probeGeometry.nearClipTris;
+            probeWorkload.maxAbsW = probeGeometry.maxAbsW;
+            probeWorkload.nonFiniteW = probeGeometry.nonFiniteW;
             probeHooks->workloadProcessed(probeWorkload);
         }
+
+        // The next workload begins here: RSP::drawIndexedTri measures its triangles only if the probe is connected now.
+        probeGeometry.begin(probeHooks != nullptr);
 
         // Advance the workload queue at the end of a full synchronization.
         advanceWorkload(workload, false);
