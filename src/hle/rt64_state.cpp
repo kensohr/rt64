@@ -794,6 +794,40 @@ namespace RT64 {
         dlCpuProfiler.end();
     }
 
+    static ProbeFlushReason probeFlushReasonFrom(FramebufferPair::FlushReason reason) {
+        switch (reason) {
+        case FramebufferPair::FlushReason::None:
+            return ProbeFlushReason::None;
+        case FramebufferPair::FlushReason::SamplingFromColorImage:
+            return ProbeFlushReason::SamplingFromColorImage;
+        case FramebufferPair::FlushReason::SamplingFromDepthImage:
+            return ProbeFlushReason::SamplingFromDepthImage;
+        case FramebufferPair::FlushReason::ColorImageChanged:
+            return ProbeFlushReason::ColorImageChanged;
+        case FramebufferPair::FlushReason::DepthImageChanged:
+            return ProbeFlushReason::DepthImageChanged;
+        case FramebufferPair::FlushReason::ProcessDisplayListsEnd:
+            return ProbeFlushReason::ProcessDisplayListsEnd;
+        }
+        assert(false && "Unknown flush reason.");
+        return ProbeFlushReason::None;
+    }
+
+    static ProbePair probePairFrom(const FramebufferPair &fbPair) {
+        ProbePair probePair;
+        probePair.colorAddress = fbPair.colorImage.address;
+        probePair.flushReason = probeFlushReasonFrom(fbPair.flushReason);
+        const FixedRect &rect = fbPair.drawColorRect;
+        // FixedRect::bottom asserts on a null rect.
+        if (!rect.isEmpty()) {
+            probePair.hasDrawColorRect = true;
+            probePair.drawColorRect = { rect.ulx, rect.uly, rect.lrx, rect.lry };
+            probePair.colorHeight = rect.bottom(true);
+        }
+
+        return probePair;
+    }
+
     void State::fullSync() {
         flush();
         submitFramebufferPair(FramebufferPair::FlushReason::ProcessDisplayListsEnd);
@@ -1792,6 +1826,12 @@ namespace RT64 {
         }
         
         const RendererProbeHooks *probeHooks = GetRendererProbeHooks();
+        if ((probeHooks != nullptr) && (probeHooks->pairProcessed != nullptr)) {
+            for (uint32_t f = 0; f < workload.fbPairCount; f++) {
+                probeHooks->pairProcessed(probePairFrom(workload.fbPairs[f]));
+            }
+        }
+
         if ((probeHooks != nullptr) && (probeHooks->workloadProcessed != nullptr)) {
             ProbeWorkload probeWorkload;
             probeWorkload.gameCallCount = workload.gameCallCount;

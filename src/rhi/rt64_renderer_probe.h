@@ -29,6 +29,34 @@ namespace RT64 {
         uint32_t gameCallCount = 0;
     };
 
+    // Mirrors FramebufferPair::FlushReason without including RT64's hle headers.
+    enum class ProbeFlushReason : uint8_t {
+        None,
+        SamplingFromColorImage,
+        SamplingFromDepthImage,
+        ColorImageChanged,
+        DepthImageChanged,
+        ProcessDisplayListsEnd
+    };
+
+    // Quarter pixels, as FixedRect.
+    struct ProbeRect {
+        int32_t ulx = 0;
+        int32_t uly = 0;
+        int32_t lrx = 0;
+        int32_t lry = 0;
+    };
+
+    // One framebuffer pair of a workload at the end of its full sync, the placeholder pair included.
+    struct ProbePair {
+        uint32_t colorAddress = 0;
+        // False when drawColorRect is null or empty (nothing drawn to colour): then the rect and height are unset.
+        bool hasDrawColorRect = false;
+        ProbeRect drawColorRect;
+        int32_t colorHeight = 0;     // drawColorRect.bottom(true): the pixel rows RT64 sizes the framebuffer with
+        ProbeFlushReason flushReason = ProbeFlushReason::None;
+    };
+
     // The renderer probe's hooks, switched on and off as one set: the host points the probe at a whole table, so RT64
     // never sees half a set, and a later hook is a new member rather than a new setter. A null member is not called.
     // Every member is called on the thread that processes display lists and updates the screen.
@@ -42,6 +70,9 @@ namespace RT64 {
 
         // State::updateScreen, for each present queued, beside the present queued hook (rt64_present_capture.h).
         void (*presentQueued)(uint64_t presentId, uint32_t fbAddress) = nullptr;
+
+        // State::fullSync, once per framebuffer pair in order, just before workloadProcessed for the same workload.
+        void (*pairProcessed)(const ProbePair &pair) = nullptr;
     };
 
     // Any thread, at any time. Null (the default) disconnects: then each call site costs one atomic load. The table
