@@ -59,6 +59,8 @@ namespace RT64 {
     // One framebuffer pair of a workload at the end of its full sync, the placeholder pair included.
     struct ProbePair {
         uint32_t colorAddress = 0;
+        uint8_t colorSiz = 0;        // G_IM_SIZ_* of the colour image
+        uint16_t colorWidth = 0;     // the colour image's width in pixels
         // False when drawColorRect is null or empty (nothing drawn to colour): then the rect and height are unset.
         bool hasDrawColorRect = false;
         ProbeRect drawColorRect;
@@ -202,4 +204,8 @@ namespace RT64 {
     // The display list thread only, between workloads. Fills `state` from the RDP of the State that last ran setup.
     // False before any State has.
     bool ReadProbeRdpState(ProbeRdpState &state);
+
+    // The exact inverse of ReadProbeRdpState, for the host's frame replay: sets the same fields of that RDP from `state`.
+    // The display list thread only, between workloads. False before any State has run setup.
+    bool WriteProbeRdpState(const ProbeRdpState &state);
 };

@@ -138,6 +138,71 @@ namespace RT64 {
         return true;
     }
 
+    bool WriteProbeRdpState(const ProbeRdpState &in) {
+        State *state = probeRdpStateSource.load();
+        if (state == nullptr) {
+            return false;
+        }
+
+        RDP &rdp = *state->rdp;
+        memcpy(rdp.TMEM, in.tmem, sizeof(in.tmem));
+        rdp.texture.address = in.textureAddress;
+        rdp.texture.fmt = in.textureFmt;
+        rdp.texture.siz = in.textureSiz;
+        rdp.texture.width = in.textureWidth;
+        for (uint32_t i = 0; i < RDP_TILES; i++) {
+            const ProbeRdpTile &source = in.tiles[i];
+            LoadTile &tile = rdp.tiles[i];
+            tile.fmt = source.fmt;
+            tile.siz = source.siz;
+            tile.line = source.line;
+            tile.tmem = source.tmem;
+            tile.palette = source.palette;
+            tile.cms = source.cms;
+            tile.cmt = source.cmt;
+            tile.masks = source.masks;
+            tile.maskt = source.maskt;
+            tile.shifts = source.shifts;
+            tile.shiftt = source.shiftt;
+            tile.uls = source.uls;
+            tile.ult = source.ult;
+            tile.lrs = source.lrs;
+            tile.lrt = source.lrt;
+        }
+
+        rdp.colorImage.address = in.colorImageAddress;
+        rdp.colorImage.fmt = in.colorImageFmt;
+        rdp.colorImage.siz = in.colorImageSiz;
+        rdp.colorImage.width = in.colorImageWidth;
+        rdp.depthImage.address = in.depthImageAddress;
+        rdp.otherMode.L = in.otherModeL;
+        rdp.otherMode.H = in.otherModeH;
+        interop::ColorCombiner &combiner = rdp.colorCombinerStack[rdp.colorCombinerStackSize - 1];
+        combiner.L = in.combinerL;
+        combiner.H = in.combinerH;
+        auto toFloat4 = [](const float (&source)[4]) { return hlslpp::float4(source[0], source[1], source[2], source[3]); };
+        auto toFloat2 = [](const float (&source)[2]) { return hlslpp::float2(source[0], source[1]); };
+        auto toFloat3 = [](const float (&source)[3]) { return hlslpp::float3(source[0], source[1], source[2]); };
+        rdp.envColorStack[rdp.envColorStackSize - 1] = toFloat4(in.envColor);
+        rdp.primColorStack[rdp.primColorStackSize - 1] = toFloat4(in.primColor);
+        // ReadProbeRdpState indexes the LOD stack by the primitive colour stack's size; the inverse does the same.
+        rdp.primLODStack[rdp.primColorStackSize - 1] = toFloat2(in.primLod);
+        rdp.primDepthStack[rdp.primDepthStackSize - 1] = toFloat2(in.primDepth);
+        rdp.blendColorStack[rdp.blendColorStackSize - 1] = toFloat4(in.blendColor);
+        rdp.fogColorStack[rdp.fogColorStackSize - 1] = toFloat4(in.fogColor);
+        rdp.fillColorStack[rdp.fillColorStackSize - 1] = in.fillColor;
+        FixedRect &scissor = rdp.scissorRectStack[rdp.scissorStackSize - 1];
+        scissor.ulx = in.scissorRect[0];
+        scissor.uly = in.scissorRect[1];
+        scissor.lrx = in.scissorRect[2];
+        scissor.lry = in.scissorRect[3];
+        rdp.scissorModeStack[rdp.scissorStackSize - 1] = in.scissorMode;
+        memcpy(rdp.convertK, in.convertK, sizeof(in.convertK));
+        rdp.keyCenter = toFloat3(in.keyCenter);
+        rdp.keyScale = toFloat3(in.keyScale);
+        return true;
+    }
+
     State::~State() {
         State *self = this;
         probeRdpStateSource.compare_exchange_strong(self, nullptr);
@@ -890,6 +955,8 @@ namespace RT64 {
     static ProbePair probePairFrom(const FramebufferPair &fbPair, const ProbePairReach &reach) {
         ProbePair probePair;
         probePair.colorAddress = fbPair.colorImage.address;
+        probePair.colorSiz = fbPair.colorImage.siz;
+        probePair.colorWidth = fbPair.colorImage.width;
         probePair.hasReach = reach.hasReach;
         probePair.reachQuarterPixels = reach.reachQuarterPixels;
         probePair.reachBehindCamera = reach.behindCamera;
