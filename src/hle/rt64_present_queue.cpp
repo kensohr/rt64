@@ -347,12 +347,12 @@ namespace RT64 {
                 // Only the game's own frame is captured, never an interpolated one.
                 const bool captureFrame = !usesInterpolatedTarget && (GetPresentCaptureHook() != nullptr);
                 if (captureFrame) {
-                    recordCapture(commandList, renderParams, capture, ext.swapChain->getWidth(), ext.swapChain->getHeight());
+                    recordCapture(commandList, renderParams, capture, ext.swapChain->getWidth(), ext.swapChain->getHeight(), VIRenderer::Layout::Window);
                 }
 
                 const RingCaptureListener *ringListener = usesInterpolatedTarget ? nullptr : GetRingCaptureListener();
                 if (ringListener != nullptr) {
-                    recordCapture(commandList, renderParams, ringCapture, ringListener->width, ringListener->height);
+                    recordCapture(commandList, renderParams, ringCapture, ringListener->width, ringListener->height, VIRenderer::Layout::ConsoleArea);
                 }
 
                 commandList->setFramebuffer(swapChainFramebuffer);
@@ -427,7 +427,7 @@ namespace RT64 {
         }
     }
 
-    void PresentQueue::recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams, Capture &target, uint32_t width, uint32_t height) {
+    void PresentQueue::recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams, Capture &target, uint32_t width, uint32_t height, VIRenderer::Layout layout) {
         // The swap chain's format (rt64_application.cpp), which the VI renderer's pipelines are built for.
         const RenderFormat format = RenderFormat::B8G8R8A8_UNORM;
         // D3D12 needs each row of a texture copied into a buffer to start on a 256-byte boundary.
@@ -449,8 +449,8 @@ namespace RT64 {
             target.height = height;
         }
 
-        // The same draw as the swap chain's, laid out for the target's size, so the image is the VI renderer's output
-        // without the render hook's UI.
+        // The same draw as the swap chain's, in the given layout for the target's size, so the image is the VI
+        // renderer's output without the render hook's UI.
         RenderTexture *captureTexture = target.texture.get();
         commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(captureTexture, RenderTextureLayout::COLOR_WRITE));
         commandList->setFramebuffer(target.framebuffer.get());
@@ -460,6 +460,7 @@ namespace RT64 {
             VIRenderer::RenderParams targetParams = renderParams;
             targetParams.targetWidth = width;
             targetParams.targetHeight = height;
+            targetParams.layout = layout;
             viRenderer->render(targetParams);
         }
 

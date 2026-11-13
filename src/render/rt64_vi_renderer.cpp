@@ -4,6 +4,8 @@
 
 #include "rt64_vi_renderer.h"
 
+#include <algorithm>
+
 #include "shared/rt64_hlsl.h"
 #include "shared/rt64_video_interface.h"
 
@@ -72,7 +74,13 @@ namespace RT64 {
         const bool hasTargetSize = (p.targetWidth > 0) && (p.targetHeight > 0);
         const uint32_t windowWidth = hasTargetSize ? p.targetWidth : p.swapChain->getWidth();
         const uint32_t windowHeight = hasTargetSize ? p.targetHeight : p.swapChain->getHeight();
-        getViewportAndScissor(windowWidth, windowHeight, *p.vi, p.resolutionScale, p.downsamplingScale, p.removeBlackBorders, viewport, scissor);
+        if (p.layout == Layout::ConsoleArea) {
+            getConsoleAreaViewportAndScissor(windowWidth, windowHeight, *p.vi, p.resolutionScale, viewport, scissor);
+        }
+        else {
+            getViewportAndScissor(windowWidth, windowHeight, *p.vi, p.resolutionScale, p.downsamplingScale, p.removeBlackBorders, viewport, scissor);
+        }
+
         p.commandList->setViewports(viewport);
         p.commandList->setScissors(scissor);
 
@@ -128,5 +136,34 @@ namespace RT64 {
 
         viewport = RenderViewport(topLeftViewport.x, topLeftViewport.y, bottomRightViewport.x - topLeftViewport.x, bottomRightViewport.y - topLeftViewport.y);
         scissor = RenderRect(lround(topLeftScissor.x), lround(topLeftScissor.y), lround(bottomRightScissor.x), lround(bottomRightScissor.y));
+    }
+
+    void VIRenderer::getConsoleAreaViewportAndScissor(uint32_t targetWidth, uint32_t targetHeight, const VI &vi, hlslpp::float2 resolutionScale, RenderViewport &viewport, RenderRect &scissor) {
+        const hlslpp::float2 sdSize = { 320.0f, 240.0f };
+        const hlslpp::float2 targetSize = { float(targetWidth), float(targetHeight) };
+
+        // A wider aspect setting stretches the VI's SD columns over a wider HD space (resolutionScale.x carries the
+        // aspect ratio scale), with the console's 4:3 area at its centre. Undoing that stretch about the centre puts
+        // the 4:3 area back on the SD space, which then maps straight onto the target.
+        const float aspectStretch = float(resolutionScale.x) / float(resolutionScale.y);
+        auto toTarget = [&](float sdX, float sdY) {
+            const float centeredX = (sdX - sdSize.x / 2.0f) * aspectStretch + sdSize.x / 2.0f;
+            return hlslpp::float2(centeredX * targetSize.x / sdSize.x, sdY * targetSize.y / sdSize.y);
+        };
+
+        const hlslpp::float4 viViewRect = vi.viewRectangle() * sdSize.xyxy;
+        const hlslpp::float4 viCropRect = vi.cropRectangle() * sdSize.xyxy;
+        const hlslpp::float2 topLeftViewport = toTarget(float(viViewRect.x), float(viViewRect.y));
+        const hlslpp::float2 bottomRightViewport = toTarget(float(viViewRect.x + viViewRect.z), float(viViewRect.y + viViewRect.w));
+        const hlslpp::float2 topLeftScissor = toTarget(float(viCropRect.x), float(viCropRect.y));
+        const hlslpp::float2 bottomRightScissor = toTarget(float(viCropRect.x + viCropRect.z), float(viCropRect.y + viCropRect.w));
+
+        // The stretched area reaches past the target's sides, and a scissor must stay inside the target.
+        auto clampToTarget = [](float value, uint32_t size) {
+            return std::clamp(int32_t(lround(value)), int32_t(0), int32_t(size));
+        };
+
+        viewport = RenderViewport(topLeftViewport.x, topLeftViewport.y, bottomRightViewport.x - topLeftViewport.x, bottomRightViewport.y - topLeftViewport.y);
+        scissor = RenderRect(clampToTarget(topLeftScissor.x, targetWidth), clampToTarget(topLeftScissor.y, targetHeight), clampToTarget(bottomRightScissor.x, targetWidth), clampToTarget(bottomRightScissor.y, targetHeight));
     }
 };

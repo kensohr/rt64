@@ -84,7 +84,7 @@ namespace RT64 {
         void waitForPresentId(uint64_t waitId);
         void setup(const External &ext);
         void threadPresent(const Present &present, bool &swapChainValid);
-        void recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams, Capture &target, uint32_t width, uint32_t height);
+        void recordCapture(RenderCommandList *commandList, const VIRenderer::RenderParams &renderParams, Capture &target, uint32_t width, uint32_t height, VIRenderer::Layout layout);
         void deliverCapture(const Present &present, Capture &target, PresentCaptureHook *captureHook);
         void skipInterpolation();
         void notifyPresentId(const Present &present);

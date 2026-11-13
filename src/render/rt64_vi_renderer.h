@@ -12,6 +12,15 @@
 
 namespace RT64 {
     struct VIRenderer {
+        // How the VI's output is placed on the target. Window: RT64's HD space fitted into the target with its aspect
+        // kept, as the swap chain shows it. ConsoleArea: the 4:3 scanline area the console outputs (320x240 SD,
+        // with the VI's own borders) stretched over the whole target, whatever the window, aspect ratio or
+        // resolution settings are; what a wider aspect setting adds beside it is cut off.
+        enum class Layout {
+            Window,
+            ConsoleArea
+        };
+
         std::unique_ptr<VideoInterfaceDescriptorSet> descriptorSet;
         const RenderSampler *descriptorSetSampler = nullptr;
 
@@ -32,6 +41,7 @@ namespace RT64 {
             // The size of the target drawn into, when it isn't the swap chain's (0 x 0: the swap chain's).
             uint32_t targetWidth = 0;
             uint32_t targetHeight = 0;
+            Layout layout = Layout::Window;
         };
 
         VIRenderer();
@@ -39,5 +49,6 @@ namespace RT64 {
         void render(const RenderParams &p);
         static void getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor);
         static void getViewportAndScissor(uint32_t windowWidth, uint32_t windowHeight, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool removeBlackBorders, RenderViewport &viewport, RenderRect &scissor);
+        static void getConsoleAreaViewportAndScissor(uint32_t targetWidth, uint32_t targetHeight, const VI &vi, hlslpp::float2 resolutionScale, RenderViewport &viewport, RenderRect &scissor);
     };
 };

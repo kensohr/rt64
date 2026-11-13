@@ -101,9 +101,10 @@ namespace RT64 {
 
     // The host's frame ring: a second capture of each drawn present (not interpolated frames, not skipped presents),
     // independent of the present capture hooks the shot recorder owns; both can capture the same present. While set,
-    // the present queue draws the VI renderer's output once more into a width x height target (the GPU scales it),
-    // reads it back, and calls `captured` on the present thread after the present's command list ran and before the
-    // workload thread is let go, so the callback must be short (a copy). The image's size is the one recorded.
+    // the present queue draws the VI renderer's output once more into a width x height target (the GPU scales it) in
+    // VIRenderer::Layout::ConsoleArea, the console's 4:3 picture filling the target, reads it back, and calls
+    // `captured` on the present thread after the present's command list ran and before the workload thread is let
+    // go, so the callback must be short (a copy). The image's size is the one recorded.
     struct RingCaptureListener {
         uint32_t width = 0;
         uint32_t height = 0;
