@@ -460,6 +460,26 @@ namespace RT64 {
         }
     }
     
+    static void reportPerspectiveProjection(const hlslpp::float4x4 &viewProj, const interop::RSPViewport &viewport) {
+        const RendererProbeHooks *probeHooks = GetRendererProbeHooks();
+        if ((probeHooks == nullptr) || (probeHooks->perspectiveProjectionRegistered == nullptr)) {
+            return;
+        }
+
+        ProbeProjection projection;
+        for (uint32_t row = 0; row < 4; row++) {
+            for (uint32_t column = 0; column < 4; column++) {
+                projection.viewProj[row][column] = viewProj[row][column];
+            }
+        }
+
+        projection.viewportScale[0] = viewport.scale.x;
+        projection.viewportScale[1] = viewport.scale.y;
+        projection.viewportTranslate[0] = viewport.translate.x;
+        projection.viewportTranslate[1] = viewport.translate.y;
+        probeHooks->perspectiveProjectionRegistered(projection);
+    }
+
     void RSP::addCurrentProjection(Projection::Type type) {
         const int workloadCursor = state->ext.workloadQueue->writeCursor;
         Workload &workload = state->ext.workloadQueue->workloads[workloadCursor];
@@ -486,6 +506,10 @@ namespace RT64 {
 
             for (uint32_t j = 0; j < 4; j++) {
                 drawData.viewportClipRatios.emplace_back(clipRatios[j]);
+            }
+
+            if (type == Projection::Type::Perspective) {
+                reportPerspectiveProjection(viewProjMatrixStack[projectionMatrixStackSize - 1], viewportStack[viewportStackSize - 1]);
             }
 
             projectionMatrixChanged = false;

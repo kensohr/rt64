@@ -75,6 +75,14 @@ namespace RT64 {
         bool reachBehindCamera = false;  // a triangle with a vertex at or behind the camera reached that far
     };
 
+    // A perspective view-projection registered for geometry: the top of the cartridge's projection stack as loaded
+    // (not the extended GBI's adjusted transform), with the RSP viewport in effect.
+    struct ProbeProjection {
+        float viewProj[4][4] = {};       // row-major, as RT64's float4x4 holds it
+        float viewportScale[2] = {};     // x, y in pixels, as RSPViewport holds them
+        float viewportTranslate[2] = {};
+    };
+
     // The renderer probe's hooks, switched on and off as one set: the host points the probe at a whole table, so RT64
     // never sees half a set, and a later hook is a new member rather than a new setter. A null member is not called.
     // Every member is called on the thread that processes display lists and updates the screen.
@@ -91,6 +99,10 @@ namespace RT64 {
 
         // State::fullSync, once per framebuffer pair in order, just before workloadProcessed for the same workload.
         void (*pairProcessed)(const ProbePair &pair) = nullptr;
+
+        // RSP::addCurrentProjection, each time it registers a new view-projection or viewport of perspective type
+        // for the vertices that follow, while a task's display lists are processed (so before its taskProcessed).
+        void (*perspectiveProjectionRegistered)(const ProbeProjection &projection) = nullptr;
     };
 
     // Any thread, at any time. Null (the default) disconnects: then each call site costs one atomic load. The table
