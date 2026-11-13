@@ -4,6 +4,7 @@
 
 #include "rt64_state.h"
 
+#include <atomic>
 #include <cassert>
 #include <cinttypes>
 
@@ -68,10 +69,83 @@ namespace RT64 {
         reset();
     }
 
-    State::~State() { }
+    // The State whose RDP ReadProbeRdpState reads: the application has one.
+    static std::atomic<State *> probeRdpStateSource = nullptr;
+
+    bool ReadProbeRdpState(ProbeRdpState &out) {
+        const State *state = probeRdpStateSource.load();
+        if (state == nullptr) {
+            return false;
+        }
+
+        const RDP &rdp = *state->rdp;
+        static_assert(sizeof(out.tmem) == sizeof(rdp.TMEM));
+        memcpy(out.tmem, rdp.TMEM, sizeof(out.tmem));
+        out.textureAddress = rdp.texture.address;
+        out.textureFmt = rdp.texture.fmt;
+        out.textureSiz = rdp.texture.siz;
+        out.textureWidth = rdp.texture.width;
+        for (uint32_t i = 0; i < RDP_TILES; i++) {
+            const LoadTile &tile = rdp.tiles[i];
+            out.tiles[i] = { tile.fmt, tile.siz, tile.line, tile.tmem, tile.palette, tile.cms, tile.cmt, tile.masks, tile.maskt,
+                tile.shifts, tile.shiftt, tile.uls, tile.ult, tile.lrs, tile.lrt };
+        }
+
+        out.colorImageAddress = rdp.colorImage.address;
+        out.colorImageFmt = rdp.colorImage.fmt;
+        out.colorImageSiz = rdp.colorImage.siz;
+        out.colorImageWidth = rdp.colorImage.width;
+        out.depthImageAddress = rdp.depthImage.address;
+        out.otherModeL = rdp.otherMode.L;
+        out.otherModeH = rdp.otherMode.H;
+        const interop::ColorCombiner &combiner = rdp.colorCombinerStack[rdp.colorCombinerStackSize - 1];
+        out.combinerL = combiner.L;
+        out.combinerH = combiner.H;
+        auto copyFloat4 = [](const hlslpp::float4 &source, float (&target)[4]) {
+            target[0] = source.x;
+            target[1] = source.y;
+            target[2] = source.z;
+            target[3] = source.w;
+        };
+
+        auto copyFloat2 = [](const hlslpp::float2 &source, float (&target)[2]) {
+            target[0] = source.x;
+            target[1] = source.y;
+        };
+
+        auto copyFloat3 = [](const hlslpp::float3 &source, float (&target)[3]) {
+            target[0] = source.x;
+            target[1] = source.y;
+            target[2] = source.z;
+        };
+
+        copyFloat4(rdp.envColorStack[rdp.envColorStackSize - 1], out.envColor);
+        copyFloat4(rdp.primColorStack[rdp.primColorStackSize - 1], out.primColor);
+        copyFloat2(rdp.primLODStack[rdp.primColorStackSize - 1], out.primLod);
+        copyFloat2(rdp.primDepthStack[rdp.primDepthStackSize - 1], out.primDepth);
+        copyFloat4(rdp.blendColorStack[rdp.blendColorStackSize - 1], out.blendColor);
+        copyFloat4(rdp.fogColorStack[rdp.fogColorStackSize - 1], out.fogColor);
+        out.fillColor = rdp.fillColorStack[rdp.fillColorStackSize - 1];
+        const FixedRect &scissor = rdp.scissorRectStack[rdp.scissorStackSize - 1];
+        out.scissorRect[0] = scissor.ulx;
+        out.scissorRect[1] = scissor.uly;
+        out.scissorRect[2] = scissor.lrx;
+        out.scissorRect[3] = scissor.lry;
+        out.scissorMode = rdp.scissorModeStack[rdp.scissorStackSize - 1];
+        memcpy(out.convertK, rdp.convertK, sizeof(out.convertK));
+        copyFloat3(rdp.keyCenter, out.keyCenter);
+        copyFloat3(rdp.keyScale, out.keyScale);
+        return true;
+    }
+
+    State::~State() {
+        State *self = this;
+        probeRdpStateSource.compare_exchange_strong(self, nullptr);
+    }
 
     void State::setup(const External &ext) {
         this->ext = ext;
+        probeRdpStateSource = this;
 
         rspProcessor = std::make_unique<RSPProcessor>(ext.device);
         framebufferRenderer = std::make_unique<FramebufferRenderer>(ext.framebufferGraphicsWorker, false, ext.createdGraphicsAPI, ext.shaderLibrary);
@@ -1439,6 +1513,7 @@ namespace RT64 {
                             uint32_t readRowCount = colorFb->height - colorFb->readHeight;
                             uint32_t readFbBytes = readRowBytes * readRowCount;
                             uint32_t storageAddress = colorImg.address + readRowBytes * colorFb->readHeight;
+                            ReportRdramRead(storageAddress, readFbBytes);
                             workload.fbStorage.store(pairCursor, storageAddress, &RDRAM[storageAddress], readFbBytes);
                             FramebufferChange *colorFbChange = colorFb->readChangeFromStorage(ext.framebufferGraphicsWorker, workload.fbStorage, scratchFbChangePool, Framebuffer::Type::Color,
                                 colorImg.fmt, pairCursor, colorFb->readHeight, readRowCount, ext.shaderLibrary);
@@ -1483,6 +1558,7 @@ namespace RT64 {
                                 uint32_t readRowCount = depthFb->height - depthFb->readHeight;
                                 uint32_t readFbBytes = readRowBytes * readRowCount;
                                 uint32_t storageAddress = depthImg.address + readRowBytes * depthFb->readHeight;
+                                ReportRdramRead(storageAddress, readFbBytes);
                                 workload.fbStorage.store(pairCursor, storageAddress, &RDRAM[storageAddress], readFbBytes);
                                 FramebufferChange *depthFbChange = depthFb->readChangeFromStorage(ext.framebufferGraphicsWorker, workload.fbStorage, scratchFbChangePool, Framebuffer::Type::Depth,
                                     G_IM_FMT_DEPTH, pairCursor, depthFb->readHeight, readRowCount, ext.shaderLibrary);
@@ -1981,6 +2057,7 @@ namespace RT64 {
                 // Ensure both the siz and width are the same.
                 if ((screenFbSize.x == screenFb->width) && (screenFbSiz == screenFb->siz)) {
                     const uint8_t *fbRAM = &RDRAM[screenFb->addressStart];
+                    ReportRdramRead(screenFb->addressStart, screenFb->RAMBytes);
                     uint64_t currentHash = XXH3_64bits(fbRAM, screenFb->RAMBytes);
                     if (currentHash != screenFb->RAMHash) {
                         {
@@ -2014,6 +2091,7 @@ namespace RT64 {
             if (screenFbSiz >= G_IM_SIZ_16b) {
                 uint32_t screenFbBytes = uint32_t(screenFbSize.x * screenFbSize.y) << (screenFbSiz - 1);
                 present.storage.resize(screenFbBytes);
+                ReportRdramRead(screenFbAddress, screenFbBytes);
                 memcpy(present.storage.data(), &RDRAM[screenFbAddress], screenFbBytes);
                 uint64_t newScreenHash = XXH3_64bits(present.storage.data(), screenFbBytes);
                 screenChangesMade = (newScreenHash != lastScreenHash);
@@ -2026,6 +2104,14 @@ namespace RT64 {
             // Push a new renderer event to the timeline for presenting this VI.
             present.screenVI = newVI;
             advancePresent(present, false);
+
+            const RendererCaptureHooks *captureHooks = GetRendererCaptureHooks();
+            if ((captureHooks != nullptr) && (captureHooks->presentQueued != nullptr)) {
+                const uint32_t viRegisters[ProbeViRegisterCount] = { newVI.status.word, newVI.origin, newVI.width, newVI.intr, newVI.vCurrentLine,
+                    newVI.burst.word, newVI.vSync, newVI.hSync.word, newVI.leap.word, newVI.hRegion.word, newVI.vRegion.word, newVI.vBurst.word,
+                    newVI.xTransform.word, newVI.yTransform.word };
+                captureHooks->presentQueued(present.presentId, viRegisters);
+            }
 
             PresentQueuedHook *queuedHook = GetPresentQueuedHook();
             if (queuedHook != nullptr) {

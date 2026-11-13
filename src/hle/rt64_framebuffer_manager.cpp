@@ -14,6 +14,7 @@
 #include "hle/rt64_rdp.h"
 #include "render/rt64_render_target.h"
 #include "render/rt64_render_worker.h"
+#include "rhi/rt64_renderer_probe.h"
 
 namespace RT64 {
     static void fixSizeToMultiple(uint32_t &width, uint32_t &height) {
@@ -820,6 +821,7 @@ namespace RT64 {
         auto it = framebuffers.begin();
         while (it != framebuffers.end()) {
             const uint8_t *fbRAM = &RDRAM[it->first];
+            ReportRdramRead(it->first, it->second.RAMBytes);
             fbStorage.store(fbPairIndex, it->first, fbRAM, it->second.RAMBytes);
             it++;
         }
@@ -832,6 +834,7 @@ namespace RT64 {
         auto it = framebuffers.begin();
         while (it != framebuffers.end()) {
             const uint8_t *fbRAM = &RDRAM[it->first];
+            ReportRdramRead(it->first, it->second.RAMBytes);
             uint64_t currentHash = XXH3_64bits(fbRAM, it->second.RAMBytes);
             if (currentHash != it->second.RAMHash) {
                 differentFbs.push_back(&it->second);
@@ -857,6 +860,7 @@ namespace RT64 {
         for (size_t i = 0; i < differentFbsCount; i++) {
             Framebuffer *fb = differentFbs[i];
             const uint8_t *fbRAM = &RDRAM[fb->addressStart];
+            ReportRdramRead(fb->addressStart, fb->RAMBytes);
             const FramebufferChange::Type fbChangeType = (fb->lastWriteFmt == G_IM_FMT_DEPTH) ? FramebufferChange::Type::Depth : FramebufferChange::Type::Color;
             FramebufferChange &fbChange = fbChangePool.use(renderWorker, fbChangeType, fb->width, fb->height, shaderLibrary->usesHDR);
             const uint32_t DifferenceFractionNum = 1;
@@ -895,6 +899,7 @@ namespace RT64 {
         auto it = framebuffers.begin();
         while (it != framebuffers.end()) {
             if ((it->second.maxHeight > 0) && (it->second.RAMBytes > 0)) {
+                ReportRdramRead(it->first, it->second.RAMBytes);
                 it->second.RAMHash = XXH3_64bits(&RDRAM[it->first], it->second.RAMBytes);
             }
 

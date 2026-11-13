@@ -381,6 +381,14 @@ namespace RT64 {
         }
     }
 
+    uint32_t GBIManager::textHashLength() const {
+        return std::max_element(textSegments.begin(), textSegments.end())->hashLength;
+    }
+
+    uint32_t GBIManager::dataHashLength() const {
+        return std::max_element(dataSegments.begin(), dataSegments.end())->hashLength;
+    }
+
     GBIManager::~GBIManager() {
         // Does nothing.
     }

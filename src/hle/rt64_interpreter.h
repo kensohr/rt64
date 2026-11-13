@@ -27,5 +27,9 @@ namespace RT64 {
         void loadUCodeGBI(uint32_t textAddress, uint32_t dataAddress, bool resetFromTask);
         void processRDPLists(uint32_t dlStartAdddress, DisplayList* dlStart, DisplayList* dlEnd);
         void processDisplayLists(uint32_t dlStartAdddress, DisplayList *dlStart);
+
+    private:
+        void reportUCodeRead(uint32_t textAddress, uint32_t dataAddress) const;
+        void reportCommandRead(const DisplayList *command, const DisplayList *cursorAfter) const;
     };
 };

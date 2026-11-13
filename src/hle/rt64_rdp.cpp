@@ -10,6 +10,7 @@
 
 #include "common/rt64_math.h"
 #include "gbi/rt64_f3d.h"
+#include "rhi/rt64_renderer_probe.h"
 
 #include "rt64_color_converter.h"
 #include "rt64_interpreter.h"
@@ -501,6 +502,7 @@ namespace RT64 {
             // Load into TMEM.
             uint8_t *TMEM8 = reinterpret_cast<uint8_t *>(TMEM);
             const uint8_t *RDRAM = state->RDRAM;
+            ReportRdramRead(textureStart, textureEnd - textureStart);
             if (RGBA32) {
                 loadToTMEMCommon<true>(TMEM8, RDRAM, textureStart, bytesPerRow, tmemStart, tmemStride, wordsPerRow, rowCount);
             }
@@ -537,6 +539,7 @@ namespace RT64 {
             // Load into TMEM.
             uint8_t *TMEM8 = reinterpret_cast<uint8_t *>(TMEM);
             const uint8_t *RDRAM = state->RDRAM;
+            ReportRdramRead(textureStart, textureEnd - textureStart);
             if (RGBA32) {
                 loadToTMEMCommon<true, true>(TMEM8, RDRAM, textureStart, bytesPerRow, tmemStart, tmemStride, wordCount, 1, loadTile.lrt);
             }
@@ -556,9 +559,9 @@ namespace RT64 {
         const uint32_t tmemStart = loadTile.tmem << 3;
         const uint32_t tmemStride = loadTile.line << 5;
         const bool RGBA32 = (loadTile.siz == G_IM_SIZ_32b) && (loadTile.fmt == G_IM_FMT_RGBA);
+        const uint32_t textureEnd = textureStart + (rowCount - 1) * bytesPerRow + (wordsPerRow << 3);
         if (deferred) {
             // Flush current framebuffer pair if any of the images being written to are loaded by this TLUT.
-            const uint32_t textureEnd = textureStart + (rowCount - 1) * bytesPerRow + (wordsPerRow << 3);
             checkImageOverlap(textureStart, textureEnd);
 
             // Discard any FB regions currently loaded into TMEM within the specified range.
@@ -577,6 +580,7 @@ namespace RT64 {
             // Load into TMEM.
             uint8_t *TMEM8 = reinterpret_cast<uint8_t *>(TMEM);
             const uint8_t *RDRAM = state->RDRAM;
+            ReportRdramRead(textureStart, textureEnd - textureStart);
             if (RGBA32) {
                 loadToTMEMCommon<true, false, true>(TMEM8, RDRAM, textureStart, bytesPerRow, tmemStart, tmemStride, wordsPerRow, rowCount);
             }

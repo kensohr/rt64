@@ -13,6 +13,7 @@
 #include "gbi/rt64_gbi_l3dex_line.h"
 #include "hle/rt64_probe_geometry.h"
 #include "hle/rt64_triangle_screen_bounds.h"
+#include "rhi/rt64_renderer_probe.h"
 #include "shared/rt64_rsp_fog.h"
 
 #include "rt64_interpreter.h"
@@ -192,6 +193,7 @@ namespace RT64 {
 
     void RSP::matrix(uint32_t address, uint8_t params) {
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(FixedMatrix));
         const FixedMatrix *fixedMatrix = reinterpret_cast<FixedMatrix *>(state->fromRDRAM(rdramAddress));
         const hlslpp::float4x4 floatMatrix = fixedMatrix->toMatrix4x4();
         matrixCommon(floatMatrix, address, params);
@@ -199,6 +201,7 @@ namespace RT64 {
 
     void RSP::matrixFloat(uint32_t address, uint8_t params) {
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, 16 * sizeof(float));
         const float *floats = reinterpret_cast<float *>(state->fromRDRAM(rdramAddress));
         const hlslpp::float4x4 floatMatrix(
             floats[0], floats[1], floats[2], floats[3],
@@ -310,6 +313,7 @@ namespace RT64 {
 #   endif
 
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(FixedMatrix));
         const FixedMatrix *fixedMatrix = reinterpret_cast<FixedMatrix *>(state->fromRDRAM(rdramAddress));
         modelViewProjMatrix = fixedMatrix->toMatrix4x4();
         modelViewProjInserted = true;
@@ -318,6 +322,7 @@ namespace RT64 {
 
     static void setExtendedMatrixFloat(RSP &rsp, uint32_t address, hlslpp::float4x4 &matrix, hlslpp::float4x4 &invMatrix) {
         const uint32_t rdramAddress = rsp.fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, 16 * sizeof(float));
         const float *floatMatrix = reinterpret_cast<float *>(rsp.state->fromRDRAM(rdramAddress));
         for (uint32_t j = 0; j < 4; j++) {
             for (uint32_t i = 0; i < 4; i++) {
@@ -374,6 +379,7 @@ namespace RT64 {
         }
 
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(Vertex) * vtxCount);
         const Vertex *dlVerts = reinterpret_cast<const Vertex *>(state->fromRDRAM(rdramAddress));
         memcpy(&vertices[dstIndex], dlVerts, sizeof(Vertex) * vtxCount);
         setVertexCommon<true, sizeof(Vertex)>(rdramAddress, dstIndex, dstIndex + vtxCount);
@@ -386,10 +392,12 @@ namespace RT64 {
         }
 
         const uint32_t rdramAddress = fromSegmentedMaskedPD(address);
+        ReportRdramRead(rdramAddress, sizeof(VertexPD) * vtxCount);
         const VertexPD *dlVerts = reinterpret_cast<const VertexPD *>(state->fromRDRAM(rdramAddress));
         for (uint32_t i = 0; i < vtxCount; i++) {
             Vertex &dst = vertices[dstIndex + i];
             const VertexPD &src = dlVerts[i];
+            ReportRdramRead(vertexColorPDAddress + (src.ci & 0xFFU), 4);
             const uint8_t *col = state->fromRDRAM(vertexColorPDAddress + (src.ci & 0xFFU));
             dst.x = src.x;
             dst.y = src.y;
@@ -414,6 +422,7 @@ namespace RT64 {
         const int workloadCursor = state->ext.workloadQueue->writeCursor;
         Workload &workload = state->ext.workloadQueue->workloads[workloadCursor];
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(VertexEXV1) * vtxCount);
         const VertexEXV1 *dlVerts = reinterpret_cast<const VertexEXV1 *>(state->fromRDRAM(rdramAddress));
         auto &velFloats = workload.drawData.velFloats;
         auto &tcVelFloats = workload.drawData.tcVelFloats;
@@ -497,6 +506,7 @@ namespace RT64 {
         float *vertexFloats = (float *)(state->fromRDRAM(vertexRdramAddress));
         uint32_t j = globalIndex * floatCount;
         uint32_t k = ((rdramAddress - baseRdramAddress) / vertexSize) * floatCount;
+        ReportRdramRead(vertexRdramAddress + k * sizeof(float), (dstMax - dstIndex) * floatCount * sizeof(float));
         for (uint32_t i = dstIndex; i < dstMax; i++) {
             for (uint32_t f = 0; f < floatCount; f++) {
                 floatsVector[j++] = vertexFloats[k++];
@@ -904,6 +914,7 @@ namespace RT64 {
     
     void RSP::setViewport(uint32_t address, uint16_t ori, int16_t offx, int16_t offy) {
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(Vp_t));
         const Vp_t *vp = reinterpret_cast<const Vp_t *>(state->fromRDRAM(rdramAddress));
         interop::RSPViewport &viewport = viewportStack[viewportStackSize - 1];
         viewport.scale.x = float(vp->vscale[1]) / 4.0f;
@@ -934,6 +945,7 @@ namespace RT64 {
     void RSP::setLight(uint8_t index, uint32_t address) {
         assert((index >= 0) && (index <= RSP_MAX_LIGHTS));
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(Light));
         const uint8_t *data = reinterpret_cast<const uint8_t *>(state->fromRDRAM(rdramAddress));
         memcpy(&lights[index], data, sizeof(Light));
         lightsChanged = true;
@@ -972,6 +984,7 @@ namespace RT64 {
     void RSP::setLookAt(uint8_t index, uint32_t address) {
         assert(index < 2);
         const uint32_t rdramAddress = fromSegmentedMasked(address);
+        ReportRdramRead(rdramAddress, sizeof(DirLight));
         const DirLight *dirLight = reinterpret_cast<const DirLight *>(state->fromRDRAM(rdramAddress));
         auto &dstLookAt = (index == 1) ? lookAt.y : lookAt.x;
         if ((dirLight->dirx != 0) || (dirLight->diry != 0) || (dirLight->dirz != 0)) {

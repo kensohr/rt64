@@ -112,4 +112,94 @@ namespace RT64 {
     // no readback, one atomic load per drawn present.
     void SetRingCaptureListener(const RingCaptureListener *listener);
     const RingCaptureListener *GetRingCaptureListener();
+
+    // VI registers as Application::Core::decodeVI masked them, in register order: status, origin, width, intr,
+    // v_current_line, timing (burst), v_sync, h_sync, leap, h_start, v_start, v_burst, x_scale, y_scale.
+    constexpr uint32_t ProbeViRegisterCount = 14;
+
+    // One tile descriptor as RDP::tiles holds it.
+    struct ProbeRdpTile {
+        uint8_t fmt = 0;
+        uint8_t siz = 0;
+        uint16_t line = 0;
+        uint16_t tmem = 0;
+        uint8_t palette = 0;
+        uint8_t cms = 0;
+        uint8_t cmt = 0;
+        uint8_t masks = 0;
+        uint8_t maskt = 0;
+        uint8_t shifts = 0;
+        uint8_t shiftt = 0;
+        uint16_t uls = 0;
+        uint16_t ult = 0;
+        uint16_t lrs = 0;
+        uint16_t lrt = 0;
+    };
+
+    // The RDP state that carries across tasks and frames, as RDP holds it: the current (top of stack) value of each
+    // stacked field, colours as the floats RDP keeps. Left out: the extended GBI's stacks below the top and its
+    // alignment state, tile replacement hashes, the Rice load history and a partial LLE command.
+    struct ProbeRdpState {
+        uint64_t tmem[512] = {};             // RDP::TMEM, RDP_TMEM_WORDS words as RT64 lays them out
+        uint32_t textureAddress = 0;         // RDP::texture (the last texture image)
+        uint8_t textureFmt = 0;
+        uint8_t textureSiz = 0;
+        uint16_t textureWidth = 0;
+        ProbeRdpTile tiles[8];
+        uint32_t colorImageAddress = 0;
+        uint8_t colorImageFmt = 0;
+        uint8_t colorImageSiz = 0;
+        uint16_t colorImageWidth = 0;
+        uint32_t depthImageAddress = 0;
+        uint32_t otherModeL = 0;
+        uint32_t otherModeH = 0;
+        uint32_t combinerL = 0;
+        uint32_t combinerH = 0;
+        float envColor[4] = {};
+        float primColor[4] = {};
+        float primLod[2] = {};
+        float primDepth[2] = {};
+        float blendColor[4] = {};
+        float fogColor[4] = {};
+        uint32_t fillColor = 0;
+        int32_t scissorRect[4] = {};         // ulx, uly, lrx, lry in quarter pixels
+        uint8_t scissorMode = 0;
+        int32_t convertK[6] = {};
+        float keyCenter[3] = {};
+        float keyScale[3] = {};
+    };
+
+    // The renderer probe's capture hooks (the host's frame captures), switched as one set like RendererProbeHooks and
+    // independent of it. A null member is not called. Every member is called on the thread that processes display
+    // lists and updates the screen.
+    struct RendererCaptureHooks {
+        // An RDRAM range RT64 reads while processing a workload or updating the screen: display list commands,
+        // matrices, vertices, viewports, lights, moved memory, ucode bytes for GBI detection, texture and TLUT loads,
+        // framebuffer RAM checks and the screen framebuffer. A physical address, possibly past RDRAM's end.
+        void (*rdramRead)(uint32_t address, uint32_t size) = nullptr;
+
+        // Interpreter::loadUCodeGBI for a task, after the GBI was chosen (cached or detected): RT64's GBIUCode value,
+        // 0 when no GBI matched.
+        void (*gbiChosen)(uint32_t ucode) = nullptr;
+
+        // State::updateScreen, for a present it queues, just before the present queued hooks.
+        void (*presentQueued)(uint64_t presentId, const uint32_t (&viRegisters)[ProbeViRegisterCount]) = nullptr;
+    };
+
+    // Any thread, at any time, with the same lifetime rule as the probe hooks. Null (the default): each read site
+    // costs one atomic load.
+    void SetRendererCaptureHooks(const RendererCaptureHooks *hooks);
+    const RendererCaptureHooks *GetRendererCaptureHooks();
+
+    // Reports a read to the capture hooks when they are set.
+    inline void ReportRdramRead(uint32_t address, uint32_t size) {
+        const RendererCaptureHooks *hooks = GetRendererCaptureHooks();
+        if ((hooks != nullptr) && (hooks->rdramRead != nullptr)) {
+            hooks->rdramRead(address, size);
+        }
+    }
+
+    // The display list thread only, between workloads. Fills `state` from the RDP of the State that last ran setup.
+    // False before any State has.
+    bool ReadProbeRdpState(ProbeRdpState &state);
 };

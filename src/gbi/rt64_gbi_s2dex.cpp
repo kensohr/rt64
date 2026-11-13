@@ -10,6 +10,7 @@
 #include "rt64_gbi_f3d.h"
 #include "rt64_gbi_f3dex.h"
 #include "rt64_gbi_rdp.h"
+#include "rhi/rt64_renderer_probe.h"
 
 //#define LOG_BGRECT_METHODS
 //#define LOG_LOADTXTR_METHODS
@@ -135,6 +136,7 @@ namespace RT64 {
             RSP *rsp = state->rsp.get();
             const uint32_t rdramAddress = state->rsp->fromSegmentedMasked((*dl)->w1);
             // TODO load this into the S2D struct buffer for a more accurate implementation in case there's ever command state bleed.
+            ReportRdramRead(rdramAddress, sizeof(uObjBg));
             const uObjBg *bgObject = reinterpret_cast<const uObjBg *>(state->fromRDRAM(rdramAddress));
             const uObjBg_t &bg = bgObject->bg;
             const uObjScaleBg_t &scaleBg = bgObject->scaleBg;
@@ -410,6 +412,7 @@ namespace RT64 {
             RSP* rsp = state->rsp.get();
             const uint32_t rdramAddress = state->rsp->fromSegmentedMasked((*dl)->w1);
             // TODO load this into the S2D struct buffer for a more accurate implementation in case there's ever command state bleed.
+            ReportRdramRead(rdramAddress, sizeof(uObjBg));
             const uObjBg *bgObject = reinterpret_cast<const uObjBg *>(state->fromRDRAM(rdramAddress));
             const uObjBg_t &bg = bgObject->bg;
             assert(bg.imageLoad == S2DEX_G_BGLT_LOADTILE); // TODO: Only the load tile version is implemented.
@@ -476,6 +479,7 @@ namespace RT64 {
             // Truncate the load size as the ucode does
             loadSize &= 0xFF;
             // Load the struct from RDRAM into the S2D struct buffer
+            ReportRdramRead(rdramAddress, loadSize);
             memcpy(state->rsp->S2D.struct_buffer.data(), state->fromRDRAM(rdramAddress), loadSize);
         }
 

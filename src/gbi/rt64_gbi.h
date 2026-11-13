@@ -75,5 +75,9 @@ namespace RT64 {
         GBI *getGBIForUCode(uint8_t *RDRAM, uint32_t textAddress, uint32_t dataAddress);
         void deduceGBIInformation(uint8_t *RDRAM, uint32_t textAddress, uint32_t dataAddress);
         GBIFunction getExtendedFunction() const;
+
+        // How many bytes from a ucode's text and data addresses getGBIForUCode hashes at most.
+        uint32_t textHashLength() const;
+        uint32_t dataHashLength() const;
     };
 };

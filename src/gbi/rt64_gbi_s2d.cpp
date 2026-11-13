@@ -14,6 +14,7 @@
 #include "rt64_gbi_extended.h"
 #include "rt64_gbi_f3d.h"
 #include "rt64_gbi_rdp.h"
+#include "rhi/rt64_renderer_probe.h"
 
 namespace RT64 {
     namespace GBI_S2D {
@@ -186,6 +187,7 @@ namespace RT64 {
             // The RSP DMAs the structure, so the address is masked as the DMA hardware would.
             const uint32_t rdramAddress = state->rsp->fromSegmentedMasked((*dl)->w1) & RSP_DMA_MASK;
             uint32_t words[USPRITE_WORDS];
+            ReportRdramRead(rdramAddress, sizeof(words));
             memcpy(words, state->fromRDRAM(rdramAddress), sizeof(words));
 
             RSP::Sprite2D &sprite = state->rsp->sprite2D;

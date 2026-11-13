@@ -6,6 +6,8 @@
 
 #include <cassert>
 
+#include "rhi/rt64_renderer_probe.h"
+
 //#define DUMP_DISPLAY_LISTS
 
 namespace RT64 {
@@ -41,12 +43,50 @@ namespace RT64 {
             UCode.dataAddress = maskedDataAddress;
         }
 
+        reportUCodeRead(maskedTextAddress, maskedDataAddress);
+
         if (hleGBI != nullptr) {
             GBIReset resetFunction = resetFromTask ? hleGBI->resetFromTask : hleGBI->resetFromLoad;
             if (resetFunction != nullptr) {
                 resetFunction(state);
             }
         }
+    }
+
+    // Detection is cached per ucode address, so the bytes it hashes are reported for every task: a replay detects the
+    // GBI afresh.
+    void Interpreter::reportUCodeRead(uint32_t textAddress, uint32_t dataAddress) const {
+        const RendererCaptureHooks *hooks = GetRendererCaptureHooks();
+        if (hooks == nullptr) {
+            return;
+        }
+
+        if (hooks->rdramRead != nullptr) {
+            hooks->rdramRead(textAddress, gbiManager.textHashLength());
+            hooks->rdramRead(dataAddress, gbiManager.dataHashLength());
+        }
+
+        if (hooks->gbiChosen != nullptr) {
+            hooks->gbiChosen((hleGBI != nullptr) ? uint32_t(hleGBI->ucode) : 0);
+        }
+    }
+
+    // A command whose function moved the cursor a few words on (a texture rectangle, an RDP half) read those words too;
+    // a branch moves it anywhere, and the next command reports where it landed.
+    void Interpreter::reportCommandRead(const DisplayList *command, const DisplayList *cursorAfter) const {
+        const RendererCaptureHooks *hooks = GetRendererCaptureHooks();
+        if ((hooks == nullptr) || (hooks->rdramRead == nullptr)) {
+            return;
+        }
+
+        const uint32_t MaxCommandWords = 32;
+        uint32_t commandWords = 1;
+        if ((cursorAfter != nullptr) && (cursorAfter > command) && (cursorAfter - command < MaxCommandWords)) {
+            commandWords = uint32_t(cursorAfter - command) + 1;
+        }
+
+        const uint32_t address = uint32_t(reinterpret_cast<const uint8_t *>(command) - state->RDRAM);
+        hooks->rdramRead(address, commandWords * sizeof(DisplayList));
     }
 
     void Interpreter::processRDPLists(uint32_t dlStartAdddress, DisplayList *dlStart, DisplayList *dlEnd) {
@@ -136,6 +176,7 @@ namespace RT64 {
                     break;
                 }
 
+                reportCommandRead(dl, dl + cmdLength - 1);
                 if (func != nullptr) {
                     dummy = dl;
                     func(state, &dummy);
@@ -170,6 +211,7 @@ namespace RT64 {
         uint8_t opCode;
         GBIFunction func;
         while (dl != nullptr) {
+            const DisplayList *command = dl;
             opCode = (dl->w0 >> 24);
 
             if ((extendedOpCode != 0) && (opCode == extendedOpCode)) {
@@ -189,6 +231,8 @@ namespace RT64 {
                     RT64_LOG_PRINTF("DL Parser ran into an unknown opCode (GBI %u): %u / 0x%X", uint32_t(hleGBI->ucode), opCode, opCode);
                 }
             }
+
+            reportCommandRead(command, dl);
 
             if (dl != nullptr) {
                 dl++;
